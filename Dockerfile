@@ -1,4 +1,4 @@
-FROM golang:1.13-alpine as development
+FROM golang:1.14-alpine as development
 
 ENV CGO_ENABLED=1
 ENV APP_NAME=bigquery-to-elasticsearch-tool
