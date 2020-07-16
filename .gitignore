@@ -1,0 +1,5 @@
+.idea
+
+*.so
+main
+bigquery-to-elasticsearch-tool
