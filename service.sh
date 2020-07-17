@@ -6,7 +6,7 @@ case "$1" in
       reflex -c ./reflex.conf
       ;;
     compile)
-      go build -o bigquery-to-elasticsearch-tool main.go
+      go build -o bq-to-es-cli main.go
       ;;
     *)
         echo "Usage: service.sh {develop|compile}" >&2

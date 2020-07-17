@@ -9,7 +9,7 @@ import (
 var cfgFile string
 
 var rootCmd = &cobra.Command{
-	Use:   "bg-to-es-cli",
+	Use:   "bq-to-es-cli",
 	Short: "A CLI to import data from BigQuery to ElasticSearch",
 }
 
