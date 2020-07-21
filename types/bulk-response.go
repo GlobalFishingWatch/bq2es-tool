@@ -1,6 +1,6 @@
 package types
 
-type bulkResponse struct {
+type BulkResponse struct {
 	Errors bool `json:"errors"`
 	Items  []struct {
 		Index struct {

@@ -1,4 +1,4 @@
-module bq-to-es-cli
+module bq2es
 
 go 1.14
 

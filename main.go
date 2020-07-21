@@ -1,6 +1,6 @@
 package main
 
-import "bq-to-es-cli/cmd"
+import "bq2es/cmd"
 
 func main() {
 	cmd.Execute()

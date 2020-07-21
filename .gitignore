@@ -2,4 +2,4 @@
 
 *.so
 main
-bq-to-es-cli
+bq2es

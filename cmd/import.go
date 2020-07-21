@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"bq-to-es-cli/internal/action"
+	"bq2es/internal/action"
 	"github.com/spf13/cobra"
 	"log"
 )
