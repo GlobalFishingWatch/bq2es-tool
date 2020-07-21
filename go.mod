@@ -6,6 +6,8 @@ require (
 	cloud.google.com/go v0.61.0 // indirect
 	cloud.google.com/go/bigquery v1.9.0
 	github.com/cespare/reflex v0.2.0 // indirect
+	github.com/dustin/go-humanize v1.0.0
+	github.com/elastic/go-elasticsearch/v7 v7.8.0
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
 	github.com/mitchellh/mapstructure v1.3.2 // indirect
