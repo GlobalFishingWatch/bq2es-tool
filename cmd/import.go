@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"bq-to-es-cli/internal/action"
-	"fmt"
 	"github.com/spf13/cobra"
+	"log"
 )
 
 func init() {
@@ -13,12 +13,17 @@ func init() {
 	importCmd.MarkFlagRequired("query")
 	importCmd.Flags().StringVarP(&ElasticSearchUrl, "elastic-search-url", "u", "", "URL exposed by Elasticsearch cluster (required)")
 	importCmd.MarkFlagRequired("elastic-search-url")
+	importCmd.Flags().StringVarP(&IndexName, "index-name", "i", "", "The name of the destination index (required)")
+	importCmd.MarkFlagRequired("index-name")
+	importCmd.Flags().StringVarP(&ImportMode, "import-mode", "m", "recreate", "Import mode [recreate|append]")
 	rootCmd.AddCommand(importCmd)
 }
 
 var Query string
 var ElasticSearchUrl string
 var ProjectId string
+var IndexName string
+var ImportMode string
 
 var importCmd = &cobra.Command{
 	Use:   "import",
@@ -29,8 +34,10 @@ Format:
 Example:
 	bq-to-es-cli import --project-id=world-fishing-827 --query="SELECT * FROM vessels" --elastic-search-url="https://user:password@elastic.gfw.org"`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println(">>>>>>> Importing results from big query")
-		action.GetResultsFromBigQuery(ProjectId, Query)
+		log.Println("→ Getting results from big query")
+		results := action.GetResultsFromBigQuery(ProjectId, Query)
+		log.Println("→ Importing results to elasticsearch")
+		action.ImportBulk(ElasticSearchUrl, results, IndexName, ImportMode)
 	},
 }
 
