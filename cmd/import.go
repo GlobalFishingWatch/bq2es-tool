@@ -30,7 +30,7 @@ var importCmd = &cobra.Command{
 	Short: "Import data from BigQuery to Elasticsearch",
 	Long:  `Import data from BigQuery to Elasticsearch
 Format:
-	bq-to-es-cli import --query="" --elastic-search-url=""
+	bq-to-es-cli import --project-id= --query= --elastic-search-url= --index-name= 
 Example:
 	bq-to-es-cli import --project-id=world-fishing-827 --query="SELECT * FROM vessels" --elastic-search-url="https://user:password@elastic.gfw.org"`,
 	Run: func(cmd *cobra.Command, args []string) {
