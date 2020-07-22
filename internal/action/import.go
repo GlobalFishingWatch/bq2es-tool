@@ -13,7 +13,6 @@ import (
 	"google.golang.org/api/iterator"
 	"log"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -29,14 +28,11 @@ func ImportBigQueryToElasticSearch(query string, url string, projectId string, i
 	onErrorAction = onError
 	ch := make(chan []byte, 100)
 
-	log.Println("→ Calculating number of documents")
-	numOfDocuments := calculateNumOfDocuments(projectId, query)
-
 	log.Println("→ Getting results from big query")
 	getResultsFromBigQuery(projectId, query, ch)
 
 	log.Println("→ Importing results to elasticsearch (Bulk)")
-	importBulk(indexName, importMode, numOfDocuments, ch)
+	importBulk(indexName, importMode, ch)
 }
 
 func validateFlags(url string, importMode string, onError string) {
@@ -53,35 +49,6 @@ func validateFlags(url string, importMode string, onError string) {
 	if strings.TrimRight(onError, "\n") != "delete" && strings.TrimRight(onError, "\n") != "keep" {
 		log.Fatalln("--on-error should equal to 'delete' or 'keep'")
 	}
-}
-
-func calculateNumOfDocuments(projectId string, query string) int {
-	ctx := context.Background()
-	client := createBigQueryClient(ctx, projectId)
-
-	re := regexp.MustCompile(`SELECT (.*) FROM`)
-	replacedQuery := re.ReplaceAllString(query, "SELECT COUNT(*) FROM")
-
-	rows, err := client.Query(replacedQuery).Read(ctx)
-	if err != nil {
-		log.Fatalf("→ BQ →→ Error: %v", err)
-	}
-	var count int
-	for {
-		var values []bigquery.Value
-		err := rows.Next(&values)
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			log.Fatalf("→ BQ →→ Error counting rows: %v", err)
-		}
-
-		if i, err := strconv.ParseInt(fmt.Sprint(values[0]), 10, 32); err == nil {
-			count = int(i)
-		}
-	}
-	return count
 }
 
 func getResultsFromBigQuery(projectId string, queryRequested string, ch chan []byte) {
@@ -148,7 +115,7 @@ func getColumnNames(schema bigquery.Schema) []string {
 	return columnNames
 }
 
-func importBulk(indexName string, importMode string, numOfDocuments int, ch chan []byte) {
+func importBulk(indexName string, importMode string, ch chan []byte) {
 	log.Println("→ ES →→ Importing data to ElasticSearch")
 
 	const Batch = 1000
@@ -158,14 +125,12 @@ func importBulk(indexName string, importMode string, numOfDocuments int, ch chan
 		numItems   int
 		numErrors  int
 		numIndexed int
-		numBatches int
 		currentBatch  int
 	)
 
 	start := time.Now().UTC()
 
-	numBatches = calculateTotalBatches(numOfDocuments, Batch)
-	createPreReport(numOfDocuments, Batch, numBatches, start)
+	createPreReport(Batch, start)
 
 	if strings.TrimRight(importMode, "\n") == "recreate" {
 		recreateIndex(indexName)
@@ -178,7 +143,7 @@ func importBulk(indexName string, importMode string, numOfDocuments int, ch chan
 		numItems ++
 		if numItems == Batch {
 			currentBatch ++
-			errors, items, indexed := executeBulk(currentBatch, numBatches, indexName, buf)
+			errors, items, indexed := executeBulk(currentBatch, indexName, buf)
 			numErrors += errors
 			numItems += items
 			numIndexed += indexed
@@ -189,7 +154,7 @@ func importBulk(indexName string, importMode string, numOfDocuments int, ch chan
 
 	if numItems <= Batch {
 		currentBatch ++
-		errors, items, indexed := executeBulk(currentBatch, numBatches, indexName, buf)
+		errors, items, indexed := executeBulk(currentBatch, indexName, buf)
 		numErrors += errors
 		numItems += items
 		numIndexed += indexed
@@ -197,7 +162,7 @@ func importBulk(indexName string, importMode string, numOfDocuments int, ch chan
 	createReport(start, numErrors, numIndexed)
 }
 
-func executeBulk(currentBatch int, numBatches int, indexName string, buf bytes.Buffer) (int, int, int) {
+func executeBulk(currentBatch int, indexName string, buf bytes.Buffer) (int, int, int) {
 	var (
 		res *esapi.Response
 		err error
@@ -210,7 +175,7 @@ func executeBulk(currentBatch int, numBatches int, indexName string, buf bytes.B
 	)
 
 	es = getElasticClient(elasticUrl)
-	log.Printf("[%d/%d] ", currentBatch, numBatches)
+	log.Printf("Batch [%d]", currentBatch)
 
 	res, err = es.Bulk(bytes.NewReader(buf.Bytes()), es.Bulk.WithIndex(indexName))
 	if err != nil {
@@ -306,12 +271,6 @@ func deleteIndex(indexName string) {
 	}
 }
 
-func calculateTotalBatches(count int, Batch int) int {
-	if count%Batch == 0 {
-		return count / Batch
-	}
-	return (count / Batch) + 1
-}
 
 func preparePayload(buf *bytes.Buffer, document []byte) {
 	meta := []byte(fmt.Sprintf(`{ "index" : {  }%s`,"\n"))
@@ -321,11 +280,10 @@ func preparePayload(buf *bytes.Buffer, document []byte) {
 	buf.Write(document)
 }
 
-func createPreReport(numOfDocuments int, Batch int, numBatches int, start time.Time) {
+func createPreReport(Batch int, start time.Time) {
 	log.Printf(
-		"→ ES →→ \x1b[1mBulk\x1b[0m: documents [%s] Batch size [%s]",
-		humanize.Comma(int64(numOfDocuments)), humanize.Comma(int64(Batch)))
-	log.Printf("→ ES →→  Number of Batchs %v", numBatches)
+		"→ ES →→ \x1b[1mBulk\x1b[0m: Batch size [%s]",
+		humanize.Comma(int64(Batch)))
 	log.Printf("→ ES →→  Start time: %v\n", start)
 	log.Print("→ ES →→  Sending Batch ")
 	log.Println(strings.Repeat("▁", 65))
