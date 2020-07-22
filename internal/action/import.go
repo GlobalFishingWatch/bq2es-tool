@@ -22,6 +22,9 @@ var elasticUrl string
 var onErrorAction string
 
 func ImportBigQueryToElasticSearch(query string, url string, projectId string, indexName string, importMode string, onError string) {
+
+	validateFlags(url, importMode, onError)
+
 	elasticUrl = url
 	onErrorAction = onError
 	ch := make(chan []byte, 100)
@@ -34,6 +37,22 @@ func ImportBigQueryToElasticSearch(query string, url string, projectId string, i
 
 	log.Println("→ Importing results to elasticsearch (Bulk)")
 	importBulk(indexName, importMode, numOfDocuments, ch)
+}
+
+func validateFlags(url string, importMode string, onError string) {
+
+	re := regexp.MustCompile(`^http://(.*)|^https://(.*)`)
+	match := re.Match([]byte(url))
+	if !match {
+		log.Fatalln("--elastic-search-url should start with 'http://' or 'https://'")
+	}
+
+	if strings.TrimRight(importMode, "\n") != "recreate" && strings.TrimRight(importMode, "\n") != "append" {
+		log.Fatalln("--import-mode should equal to 'recreate' or 'append'")
+	}
+	if strings.TrimRight(onError, "\n") != "delete" && strings.TrimRight(onError, "\n") != "keep" {
+		log.Fatalln("--on-error should equal to 'delete' or 'keep'")
+	}
 }
 
 func calculateNumOfDocuments(projectId string, query string) int {
