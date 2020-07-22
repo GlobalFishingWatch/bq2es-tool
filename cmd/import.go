@@ -16,6 +16,7 @@ func init() {
 	importCmd.Flags().StringVarP(&IndexName, "index-name", "i", "", "The name of the destination index (required)")
 	importCmd.MarkFlagRequired("index-name")
 	importCmd.Flags().StringVarP(&ImportMode, "import-mode", "m", "recreate", "Import mode [recreate|append]")
+	importCmd.Flags().StringVarP(&OnError, "on-error", "e", "delete", "Action to do if command fails [delete|keep]")
 	rootCmd.AddCommand(importCmd)
 }
 
@@ -24,6 +25,7 @@ var ElasticSearchUrl string
 var ProjectId string
 var IndexName string
 var ImportMode string
+var OnError string
 
 var importCmd = &cobra.Command{
 	Use:   "import",
@@ -35,7 +37,7 @@ Example:
 	bq-to-es-cli import --project-id=world-fishing-827 --query="SELECT * FROM vessels" --elastic-search-url="https://user:password@elastic.gfw.org"`,
 	Run: func(cmd *cobra.Command, args []string) {
 		log.Println("→ Executing Import command")
-		action.ImportBigQueryToElasticSearch(Query, ElasticSearchUrl, ProjectId, IndexName, ImportMode)
+		action.ImportBigQueryToElasticSearch(Query, ElasticSearchUrl, ProjectId, IndexName, ImportMode, OnError)
 	},
 }
 

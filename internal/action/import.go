@@ -19,9 +19,11 @@ import (
 )
 
 var elasticUrl string
+var onErrorAction string
 
-func ImportBigQueryToElasticSearch(query string, url string, projectId string, indexName string, importMode string) {
+func ImportBigQueryToElasticSearch(query string, url string, projectId string, indexName string, importMode string, onError string) {
 	elasticUrl = url
+	onErrorAction = onError
 	ch := make(chan []byte, 100)
 
 	log.Println("→ Calculating number of documents")
@@ -63,7 +65,6 @@ func calculateNumOfDocuments(projectId string, query string) int {
 	return count
 }
 
-// Big Query
 func getResultsFromBigQuery(projectId string, queryRequested string, ch chan []byte) {
 	ctx := context.Background()
 	client := createBigQueryClient(ctx, projectId)
@@ -194,11 +195,17 @@ func executeBulk(currentBatch int, numBatches int, indexName string, buf bytes.B
 
 	res, err = es.Bulk(bytes.NewReader(buf.Bytes()), es.Bulk.WithIndex(indexName))
 	if err != nil {
+		if onErrorAction == "delete" {
+			deleteIndex(indexName)
+		}
 		log.Fatalf("Failure indexing Batch %d: %s", currentBatch, err)
 	}
 
 	if res.IsError() {
 		numErrors += numItems
+		if onErrorAction == "delete" {
+			deleteIndex(indexName)
+		}
 		if err := json.NewDecoder(res.Body).Decode(&raw); err != nil {
 			log.Fatalf("Failure to to parse response body: %s", err)
 		}
@@ -210,12 +217,18 @@ func executeBulk(currentBatch int, numBatches int, indexName string, buf bytes.B
 	}
 
 	if err := json.NewDecoder(res.Body).Decode(&blk); err != nil {
+		if onErrorAction == "delete" {
+			deleteIndex(indexName)
+		}
 		log.Fatalf("Failure to to parse response body: %s", err)
 	}
 
 	for _, d := range blk.Items {
 		if d.Index.Status > 201 {
 			numErrors++
+			if onErrorAction == "delete" {
+				deleteIndex(indexName)
+			}
 			log.Fatalf("  Error: [%d]: %s: %s: %s: %s",
 				d.Index.Status,
 				d.Index.Error.Type,
@@ -251,15 +264,26 @@ func recreateIndex(indexName string) {
 
 	es = getElasticClient(elasticUrl)
 	log.Printf("→ ES →→ Recreating index with name %v\n", indexName)
-	if res, err = es.Indices.Delete([]string{indexName}); err != nil {
-		log.Fatalf("→ ES →→ Cannot delete index: %s", err)
-	}
+	deleteIndex(indexName)
 	res, err = es.Indices.Create(indexName)
 	if err != nil {
 		log.Fatalf("→ ES →→ Cannot create index: %s", err)
 	}
 	if res.IsError() {
 		log.Fatalf("→ ES →→ Cannot create index: %s", res)
+	}
+}
+
+func deleteIndex(indexName string) {
+	var (
+		err error
+		es *elasticsearch.Client
+	)
+
+	es = getElasticClient(elasticUrl)
+	log.Printf("→ ES →→ Deleting index with name %v\n", indexName)
+	if _, err = es.Indices.Delete([]string{indexName}); err != nil {
+		log.Fatalf("→ ES →→ Cannot delete index: %s", err)
 	}
 }
 
