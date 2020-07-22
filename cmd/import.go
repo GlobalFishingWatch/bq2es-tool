@@ -34,10 +34,8 @@ Format:
 Example:
 	bq-to-es-cli import --project-id=world-fishing-827 --query="SELECT * FROM vessels" --elastic-search-url="https://user:password@elastic.gfw.org"`,
 	Run: func(cmd *cobra.Command, args []string) {
-		log.Println("→ Getting results from big query")
-		results := action.GetResultsFromBigQuery(ProjectId, Query)
-		log.Println("→ Importing results to elasticsearch")
-		action.ImportBulk(ElasticSearchUrl, results, IndexName, ImportMode)
+		log.Println("→ Executing Import command")
+		action.ImportBigQueryToElasticSearch(Query, ElasticSearchUrl, ProjectId, IndexName, ImportMode)
 	},
 }
 
