@@ -3,29 +3,31 @@ package cmd
 import (
 	"bq2es/internal/action"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"log"
 )
 
 func init() {
-	importCmd.Flags().StringVarP(&ProjectId,"project-id", "p", "", "Project id related to BigQuery database (required)")
+	importCmd.Flags().StringP("project-id", "p", "", "Project id related to BigQuery database (required)")
 	importCmd.MarkFlagRequired("project-id")
-	importCmd.Flags().StringVarP(&Query,"query", "q", "", "Query to find data in BigQuery (required)")
+	importCmd.Flags().StringP("query", "q", "", "Query to find data in BigQuery (required)")
 	importCmd.MarkFlagRequired("query")
-	importCmd.Flags().StringVarP(&ElasticSearchUrl, "elastic-search-url", "u", "", "URL exposed by Elasticsearch cluster (required)")
+	importCmd.Flags().StringP( "elastic-search-url", "u", "", "URL exposed by Elasticsearch cluster (required)")
 	importCmd.MarkFlagRequired("elastic-search-url")
-	importCmd.Flags().StringVarP(&IndexName, "index-name", "i", "", "The name of the destination index (required)")
+	importCmd.Flags().StringP( "index-name", "i", "", "The name of the destination index (required)")
 	importCmd.MarkFlagRequired("index-name")
-	importCmd.Flags().StringVarP(&ImportMode, "import-mode", "m", "recreate", "Import mode [recreate|append]")
-	importCmd.Flags().StringVarP(&OnError, "on-error", "e", "delete", "Action to do if command fails [delete|keep]")
+	importCmd.Flags().StringP( "import-mode", "m", "recreate", "Import mode [recreate|append]")
+	importCmd.Flags().StringP( "on-error", "e", "delete", "Action to do if command fails [delete|keep]")
+
+	viper.BindPFlag("project-id", importCmd.Flags().Lookup("project-id"))
+	viper.BindPFlag("query", importCmd.Flags().Lookup("query"))
+	viper.BindPFlag("elastic-search-url", importCmd.Flags().Lookup("elastic-search-url"))
+	viper.BindPFlag("index-name", importCmd.Flags().Lookup("index-name"))
+	viper.BindPFlag("import-mode", importCmd.Flags().Lookup("import-mode"))
+	viper.BindPFlag("on-error", importCmd.Flags().Lookup("on-error"))
+
 	rootCmd.AddCommand(importCmd)
 }
-
-var Query string
-var ElasticSearchUrl string
-var ProjectId string
-var IndexName string
-var ImportMode string
-var OnError string
 
 var importCmd = &cobra.Command{
 	Use:   "import",
@@ -36,8 +38,15 @@ Format:
 Example:
 	bq-to-es-cli import --project-id=world-fishing-827 --query="SELECT * FROM vessels" --elastic-search-url="https://user:password@elastic.gfw.org"`,
 	Run: func(cmd *cobra.Command, args []string) {
+		query := viper.GetString("query")
+		elasticSearchUrl := viper.GetString("elastic-search-url")
+		projectId := viper.GetString("project-id")
+		indexName := viper.GetString("index-name")
+		importMode := viper.GetString("import-mode")
+		onError := viper.GetString("on-error")
+
 		log.Println("→ Executing Import command")
-		action.ImportBigQueryToElasticSearch(Query, ElasticSearchUrl, ProjectId, IndexName, ImportMode, OnError)
+		action.ImportBigQueryToElasticSearch(query, elasticSearchUrl, projectId, indexName, importMode, onError)
 	},
 }
 
