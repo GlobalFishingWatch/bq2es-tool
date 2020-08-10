@@ -2,6 +2,7 @@ package action
 
 import (
 	"bq2es/types"
+	"bq2es/utils"
 	"bytes"
 	"cloud.google.com/go/bigquery"
 	"context"
@@ -12,7 +13,6 @@ import (
 	"github.com/elastic/go-elasticsearch/v7/esapi"
 	"google.golang.org/api/iterator"
 	"log"
-	"regexp"
 	"strings"
 	"time"
 )
@@ -37,11 +37,7 @@ func ImportBigQueryToElasticSearch(query string, url string, projectId string, i
 
 func validateFlags(url string, importMode string, onError string) {
 
-	re := regexp.MustCompile(`^http://(.*)|^https://(.*)`)
-	match := re.Match([]byte(url))
-	if !match {
-		log.Fatalln("--elastic-search-url should start with 'http://' or 'https://'")
-	}
+	utils.ValidateUrl(url)
 
 	if strings.TrimRight(importMode, "\n") != "recreate" && strings.TrimRight(importMode, "\n") != "append" {
 		log.Fatalln("--import-mode should equal to 'recreate' or 'append'")

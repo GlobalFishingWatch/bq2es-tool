@@ -6,6 +6,7 @@ import (
 	"github.com/elastic/go-elasticsearch/v7"
 	"github.com/elastic/go-elasticsearch/v7/esapi"
 	"log"
+	"bq2es/utils"
 )
 
 func CreateIndexWithCustomMapping(bucketName string, indexName string, elasticSearchUrl string) {
@@ -14,6 +15,8 @@ func CreateIndexWithCustomMapping(bucketName string, indexName string, elasticSe
 		err error
 	)
 	ctx := context.Background()
+
+	utils.ValidateUrl(elasticSearchUrl)
 
 	storageClient := getStorageClient(ctx)
 	defer storageClient.Close()
