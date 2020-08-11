@@ -5,6 +5,7 @@ go 1.14
 require (
 	cloud.google.com/go v0.61.0 // indirect
 	cloud.google.com/go/bigquery v1.9.0
+	cloud.google.com/go/storage v1.10.0
 	github.com/cespare/reflex v0.2.0 // indirect
 	github.com/dustin/go-humanize v1.0.0
 	github.com/elastic/go-elasticsearch/v7 v7.8.0
@@ -18,6 +19,7 @@ require (
 	github.com/spf13/cobra v1.0.0
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
+	github.com/spf13/viper v1.7.1
 	golang.org/x/sys v0.0.0-20200625212154-ddb9806d33ae // indirect
 	golang.org/x/tools v0.0.0-20200716134326-a8f9df4c9543 // indirect
 	google.golang.org/api v0.29.0

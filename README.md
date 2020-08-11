@@ -23,17 +23,20 @@ https://github.com/GlobalFishingWatch/bq2es-tool
 
 There are available the following commands:
 * Import
-* 
+* Create-Index
 
-### Command: [Import]
+---
+
+### Command: [import]
+
+The import command allows you to import data from BigQuery to Elastic Search. 
+
 #### Flags
 ##### Required flags
 - `--project-id=` (*): the project id where we want to run the query.
 - `--query=` SQL query to get rows from BigQuery.
-- `--indexName=` The destination name index.
-- `--elastic-search-url=` (*): The Elasticsearch's URL. 
-
-(*) Pending/Evaluate to move these values to the environment variables because the values are usually the same.
+- `--index-name=` The destination name index.
+- `--elastic-search-url=`: The Elasticsearch's URL. 
 
 ##### Optional flags
 * `--import-mode=` The import mode allows you to define if you want to recreate the index or append the data
@@ -52,7 +55,36 @@ bq2es import
 ```
 
 When you execute this command, under the hood happens the followings steps:
-* Execute the command using the command line.
 * The CLI executes the SQL query and gets the rows
 * The CLI parses the results from RowIterator to JSON files. The keys are the name of each column.
 * The CLI imports the parsed data to Elasticsearch creating a default mapping and using the bulk method. The index's name is provided by the flag --index-name
+
+---
+
+### Command: [create-index]
+
+Create a new index applying a custom mapping from Google Cloud Storage Bucket. Sometimes You can need to add a custom mapping for
+an index. You need to execute this command before import the data.
+
+#### Flags
+##### Required flags
+- `--bucket-name=` The source name bucket.
+- `--index-name=` The destination name index.
+- `--elastic-search-url=` (*): The Elasticsearch's URL. 
+
+##### Optional flags
+No optional flags.
+
+#### Example
+Here an example of this command:
+```
+bq2es create-index 
+  --bucket-name=elastic-search-mappings
+  --index-name=test-track-data
+  --elastic-search-url="https://global:********@elasticsearch-7.globalfishingwatch.org" 
+```
+
+When you execute this command, under the hood happens the followings steps:
+* The CLI find the JSON file in the specified bucket. Example, if you specified track-data as index-name then: `track-data.json`
+* Create the index (if not exists)
+* Put the mapping defined in the JSON file.
