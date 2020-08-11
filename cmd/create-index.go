@@ -16,8 +16,8 @@ func init() {
 	createIndexCmd.MarkFlagRequired("elastic-search-url")
 
 	viper.BindPFlag("bucket-name", createIndexCmd.Flags().Lookup("bucket-name"))
-	viper.BindPFlag("index-name", createIndexCmd.Flags().Lookup("index-name"))
-	viper.BindPFlag("elastic-search-url", createIndexCmd.Flags().Lookup("elastic-search-url"))
+	viper.BindPFlag("create-index-name", createIndexCmd.Flags().Lookup("index-name"))
+	viper.BindPFlag("create-index-elastic-search-url", createIndexCmd.Flags().Lookup("elastic-search-url"))
 
 	rootCmd.AddCommand(createIndexCmd)
 }
@@ -32,8 +32,8 @@ Example:
 	bq2es create-index --bucket-name=elastic-search-mappings --index-name=test-vessels --elastic-search-url="https://user:password@elastic.gfw.org"`,
 	Run: func(cmd *cobra.Command, args []string) {
 		bucketName := viper.GetString("bucket-name")
-		indexName := viper.GetString("index-name")
-		elasticSearchUrl := viper.GetString("elastic-search-url")
+		indexName := viper.GetString("create-index-name")
+		elasticSearchUrl := viper.GetString("create-index-elastic-search-url")
 		log.Println("→ Executing Create Index command")
 		action.CreateIndexWithCustomMapping(bucketName, indexName, elasticSearchUrl)
 	},
