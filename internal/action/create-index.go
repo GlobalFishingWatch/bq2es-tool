@@ -1,12 +1,13 @@
 package action
 
 import (
+	"bq2es/internal/common"
+	"bq2es/internal/utils"
 	"cloud.google.com/go/storage"
 	"context"
 	"github.com/elastic/go-elasticsearch/v7"
 	"github.com/elastic/go-elasticsearch/v7/esapi"
 	"log"
-	"bq2es/utils"
 )
 
 func CreateIndexWithCustomMapping(bucketName string, indexName string, elasticSearchUrl string) {
@@ -18,7 +19,7 @@ func CreateIndexWithCustomMapping(bucketName string, indexName string, elasticSe
 
 	utils.ValidateUrl(elasticSearchUrl)
 
-	storageClient := getStorageClient(ctx)
+	storageClient := common.CreateStorageClient(ctx)
 	defer storageClient.Close()
 
 	bucket := getBucket(ctx, storageClient, bucketName)
@@ -29,8 +30,8 @@ func CreateIndexWithCustomMapping(bucketName string, indexName string, elasticSe
 	}
 	defer reader.Close()
 
-	elasticClient := getEsClient(elasticSearchUrl)
-	createIndex(elasticClient, indexName)
+	elasticClient := common.CreateElasticSearchClient(elasticSearchUrl)
+	common.CreateIndex(elasticClient, indexName)
 	res = putMapping(elasticClient, indexName, reader)
 	log.Printf("→ Set Mapping response: %v", res)
 }
@@ -44,33 +45,6 @@ func getBucket(ctx context.Context, storageClient *storage.Client, bucketName st
 	log.Printf("→ SG →→ bucket %s, created at %s, is located in %s with storage class %s\n",
 		attrs.Name, attrs.Created, attrs.Location, attrs.StorageClass)
 	return bucket
-}
-
-func getStorageClient(ctx context.Context) *storage.Client {
-	client, err := storage.NewClient(ctx)
-	if err != nil {
-		log.Fatalf("→ SC →→ Failed to create client: %v", err)
-	}
-	return client
-}
-
-func getEsClient(url string) *elasticsearch.Client {
-	cfg := elasticsearch.Config{
-		Addresses: []string{url},
-	}
-	es, err := elasticsearch.NewClient(cfg)
-	if err != nil {
-		log.Fatalf("→ SG →→ Error creating the client: %s", err)
-	}
-	return es
-}
-
-func createIndex(elasticClient *elasticsearch.Client, indexName string) {
-	res, err := elasticClient.Indices.Create(indexName)
-	if err != nil {
-		log.Fatalf("→ ES →→ Error creating the client: %s", err)
-	}
-	log.Printf("Set Mapping response: %v", res)
 }
 
 func putMapping(elasticClient *elasticsearch.Client, indexName string, reader *storage.Reader) *esapi.Response {

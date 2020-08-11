@@ -1,15 +1,16 @@
 package common
 
 import (
-	"cloud.google.com/go/storage"
+	"cloud.google.com/go/bigquery"
 	"context"
 	"log"
 )
 
-func CreateStorageClient(ctx context.Context) *storage.Client {
-	client, err := storage.NewClient(ctx)
+func CreateBigQueryClient(ctx context.Context, projectId string) *bigquery.Client {
+	client, err := bigquery.NewClient(ctx, projectId)
 	if err != nil {
-		log.Fatalf("→ SC →→ Failed to create client: %v", err)
+		log.Fatalf("→ BQ →→ bigquery.NewClient: %v", err)
 	}
+	defer client.Close()
 	return client
 }

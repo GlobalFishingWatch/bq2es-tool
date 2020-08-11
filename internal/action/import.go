@@ -1,8 +1,9 @@
 package action
 
 import (
+	"bq2es/internal/common"
+	"bq2es/internal/utils"
 	"bq2es/types"
-	"bq2es/utils"
 	"bytes"
 	"cloud.google.com/go/bigquery"
 	"context"
@@ -17,15 +18,17 @@ import (
 	"time"
 )
 
-var elasticUrl string
+var elasticSearchUrl string
+var elasticSearchClient *elasticsearch.Client
 var onErrorAction string
 
 func ImportBigQueryToElasticSearch(query string, url string, projectId string, indexName string, importMode string, onError string) {
 
 	validateFlags(url, importMode, onError)
 
-	elasticUrl = url
+	elasticSearchUrl = url
 	onErrorAction = onError
+	elasticSearchClient = common.CreateElasticSearchClient(url)
 	ch := make(chan []byte, 100)
 
 	log.Println("→ Getting results from big query")
@@ -49,23 +52,14 @@ func validateFlags(url string, importMode string, onError string) {
 
 func getResultsFromBigQuery(projectId string, queryRequested string, ch chan []byte) {
 	ctx := context.Background()
-	client := createBigQueryClient(ctx, projectId)
-	iterator := makeQuery(ctx, client, queryRequested)
+	bigQueryClient := common.CreateBigQueryClient(ctx, projectId)
+	iterator := makeQuery(ctx, bigQueryClient, queryRequested)
 	go parseResultsToJson(iterator, ch)
 }
 
-func createBigQueryClient(ctx context.Context, projectId string) *bigquery.Client {
-	client, err := bigquery.NewClient(ctx, projectId)
-	if err != nil {
-		log.Fatalf("→ BQ →→ bigquery.NewClient: %v", err)
-	}
-	defer client.Close()
-	return client
-}
-
-func makeQuery(ctx context.Context, client *bigquery.Client, queryRequested string) (*bigquery.RowIterator) {
+func makeQuery(ctx context.Context, bigQueryClient *bigquery.Client, queryRequested string) (*bigquery.RowIterator) {
 	log.Println("→ BQ →→ Making query to get data from bigQuery")
-	query := client.Query(queryRequested)
+	query := bigQueryClient.Query(queryRequested)
 	it, err := query.Read(ctx)
 	if err != nil {
 		log.Fatalf("→ BQ →→ Error counting rows: %v", err)
@@ -162,7 +156,6 @@ func executeBulk(currentBatch int, indexName string, buf bytes.Buffer) (int, int
 	var (
 		res *esapi.Response
 		err error
-		es *elasticsearch.Client
 		raw map[string]interface{}
 		blk *types.BulkResponse
 		numErrors int
@@ -170,13 +163,12 @@ func executeBulk(currentBatch int, indexName string, buf bytes.Buffer) (int, int
 		numIndexed int
 	)
 
-	es = getElasticClient(elasticUrl)
 	log.Printf("Batch [%d]", currentBatch)
 
-	res, err = es.Bulk(bytes.NewReader(buf.Bytes()), es.Bulk.WithIndex(indexName))
+	res, err = elasticSearchClient.Bulk(bytes.NewReader(buf.Bytes()), elasticSearchClient.Bulk.WithIndex(indexName))
 	if err != nil {
 		if onErrorAction == "delete" {
-			deleteIndex(indexName)
+			common.DeleteIndex(elasticSearchClient, indexName)
 		}
 		log.Fatalf("Failure indexing Batch %d: %s", currentBatch, err)
 	}
@@ -184,7 +176,7 @@ func executeBulk(currentBatch int, indexName string, buf bytes.Buffer) (int, int
 	if res.IsError() {
 		numErrors += numItems
 		if onErrorAction == "delete" {
-			deleteIndex(indexName)
+			common.DeleteIndex(elasticSearchClient, indexName)
 		}
 		if err := json.NewDecoder(res.Body).Decode(&raw); err != nil {
 			log.Fatalf("Failure to to parse response body: %s", err)
@@ -198,7 +190,7 @@ func executeBulk(currentBatch int, indexName string, buf bytes.Buffer) (int, int
 
 	if err := json.NewDecoder(res.Body).Decode(&blk); err != nil {
 		if onErrorAction == "delete" {
-			deleteIndex(indexName)
+			common.DeleteIndex(elasticSearchClient, indexName)
 		}
 		log.Fatalf("Failure to to parse response body: %s", err)
 	}
@@ -207,7 +199,7 @@ func executeBulk(currentBatch int, indexName string, buf bytes.Buffer) (int, int
 		if d.Index.Status > 201 {
 			numErrors++
 			if onErrorAction == "delete" {
-				deleteIndex(indexName)
+				common.DeleteIndex(elasticSearchClient, indexName)
 			}
 			log.Fatalf("  Error: [%d]: %s: %s: %s: %s",
 				d.Index.Status,
@@ -223,50 +215,11 @@ func executeBulk(currentBatch int, indexName string, buf bytes.Buffer) (int, int
 	return numErrors, numItems, numIndexed
 }
 
-func getElasticClient(address string) *elasticsearch.Client {
-	cfg := elasticsearch.Config{
-		Addresses: []string{address},
-	}
-	es, err := elasticsearch.NewClient(cfg)
-	if err != nil {
-		log.Fatalf("→ ES →→ Error creating the client: %s", err)
-	}
-	return es
-}
-
 func recreateIndex(indexName string) {
-
-	var (
-		res *esapi.Response
-		err error
-		es *elasticsearch.Client
-	)
-
-	es = getElasticClient(elasticUrl)
 	log.Printf("→ ES →→ Recreating index with name %v\n", indexName)
-	deleteIndex(indexName)
-	res, err = es.Indices.Create(indexName)
-	if err != nil {
-		log.Fatalf("→ ES →→ Cannot create index: %s", err)
-	}
-	if res.IsError() {
-		log.Fatalf("→ ES →→ Cannot create index: %s", res)
-	}
+	common.DeleteIndex(elasticSearchClient, indexName)
+	common.CreateIndex(elasticSearchClient, indexName)
 }
-
-func deleteIndex(indexName string) {
-	var (
-		err error
-		es *elasticsearch.Client
-	)
-
-	es = getElasticClient(elasticUrl)
-	log.Printf("→ ES →→ Deleting index with name %v\n", indexName)
-	if _, err = es.Indices.Delete([]string{indexName}); err != nil {
-		log.Fatalf("→ ES →→ Cannot delete index: %s", err)
-	}
-}
-
 
 func preparePayload(buf *bytes.Buffer, document []byte) {
 	meta := []byte(fmt.Sprintf(`{ "index" : {  }%s`,"\n"))

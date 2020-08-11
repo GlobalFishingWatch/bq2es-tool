@@ -1,17 +1,15 @@
 package common
 
 import (
-	"github.com/elastic/go-elasticsearch/v7"
+	"cloud.google.com/go/storage"
+	"context"
 	"log"
 )
 
-func CreateElasticSearchClient(url string) *elasticsearch.Client {
-	cfg := elasticsearch.Config{
-		Addresses: []string{url},
-	}
-	es, err := elasticsearch.NewClient(cfg)
+func CreateStorageClient(ctx context.Context) *storage.Client {
+	client, err := storage.NewClient(ctx)
 	if err != nil {
-		log.Fatalf("→ ES →→ Error creating the client: %s", err)
+		log.Fatalf("→ SC →→ Failed to create client: %v", err)
 	}
-	return es
+	return client
 }
