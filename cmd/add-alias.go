@@ -29,9 +29,9 @@ var addAliasCmd = &cobra.Command{
 	Short: "Add an alias to an index",
 	Long:  `Adds an alias to an index
 Format:
-	bq2es add-alias --index-name=[name]
+	bq2es add-alias --index-name=[name] --alias=[name] --elastic-search-url=[url]
 Example:
-	bq2es add-alias --bucket-name=elastic-search-mappings`,
+	bq2es add-alias --index-name=gfw-tasks-2020 --alias=gfw-tasks --elastic-search-url=https://user:password@elastic.gfw.org`,
 	Run: func(cmd *cobra.Command, args []string) {
 		indexName := viper.GetString("add-alias-index-name")
 		alias := viper.GetString("add-alias-alias")
