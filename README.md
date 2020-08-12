@@ -11,9 +11,10 @@ bq2es [command] [--flags]
 ```
 
 ### Tech Stack:
-* Go
-* Cobra Framework
-* Docker
+* [Golang](https://golang.org/doc/)
+* [Cobra Framework](https://github.com/spf13/cobra#working-with-flags)
+* [Viper](https://github.com/spf13/viper)
+* [Docker](https://docs.docker.com/)
 
 ### Git
 * Repository: 

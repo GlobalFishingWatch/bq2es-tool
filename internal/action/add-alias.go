@@ -1,8 +1,8 @@
 package action
 
 import (
-	"bq2es/internal/common"
-	"bq2es/internal/utils"
+	"github.com/GlobalFishingWatch/bq2es-tool/internal/common"
+	"github.com/GlobalFishingWatch/bq2es-tool/internal/utils"
 	"github.com/elastic/go-elasticsearch/v7"
 	"log"
 )

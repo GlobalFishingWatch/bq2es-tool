@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"bq2es/internal/action"
+	"github.com/GlobalFishingWatch/bq2es-tool/internal/action"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"log"

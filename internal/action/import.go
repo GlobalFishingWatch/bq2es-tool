@@ -1,9 +1,9 @@
 package action
 
 import (
-	"bq2es/internal/common"
-	"bq2es/internal/utils"
-	"bq2es/types"
+	"github.com/GlobalFishingWatch/bq2es-tool/internal/common"
+	"github.com/GlobalFishingWatch/bq2es-tool/internal/utils"
+	"github.com/GlobalFishingWatch/bq2es-tool/types"
 	"bytes"
 	"cloud.google.com/go/bigquery"
 	"context"

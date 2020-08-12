@@ -1,4 +1,4 @@
-module bq2es
+module github.com/GlobalFishingWatch/bq2es-tool
 
 go 1.14
 
