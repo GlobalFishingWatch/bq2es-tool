@@ -77,7 +77,6 @@ func makeQuery(ctx context.Context, client *bigquery.Client, queryRequested stri
 
 func parseResultsToJson(it *bigquery.RowIterator, ch chan []byte) {
 	log.Println("→ BQ →→ Parsing results to JSON")
-	// var columnNames = getColumnNames(it.Schema)
 
 	for {
 		var values []bigquery.Value
