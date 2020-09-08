@@ -13,6 +13,7 @@ import (
 	"github.com/elastic/go-elasticsearch/v7/esapi"
 	"google.golang.org/api/iterator"
 	"log"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -66,6 +67,7 @@ func createBigQueryClient(ctx context.Context, projectId string) *bigquery.Clien
 func makeQuery(ctx context.Context, client *bigquery.Client, queryRequested string) (*bigquery.RowIterator) {
 	log.Println("→ BQ →→ Making query to get data from bigQuery")
 	query := client.Query(queryRequested)
+	query.AllowLargeResults = true
 	it, err := query.Read(ctx)
 	if err != nil {
 		log.Fatalf("→ BQ →→ Error counting rows: %v", err)
@@ -75,7 +77,8 @@ func makeQuery(ctx context.Context, client *bigquery.Client, queryRequested stri
 
 func parseResultsToJson(it *bigquery.RowIterator, ch chan []byte) {
 	log.Println("→ BQ →→ Parsing results to JSON")
-	var columnNames = getColumnNames(it.Schema)
+	// var columnNames = getColumnNames(it.Schema)
+
 	for {
 		var values []bigquery.Value
 		err := it.Next(&values)
@@ -88,11 +91,7 @@ func parseResultsToJson(it *bigquery.RowIterator, ch chan []byte) {
 			log.Fatalf("→ BQ →→ Error: %v", err)
 		}
 
-		var dataMapped = make(map[string]bigquery.Value)
-
-		for i := 0; i < len(columnNames); i++ {
-			dataMapped[columnNames[i]] = values[i]
-		}
+		var dataMapped = toMapJson(values, it.Schema)
 
 		jsonString, err := json.Marshal(dataMapped)
 		if err != nil {
@@ -102,8 +101,46 @@ func parseResultsToJson(it *bigquery.RowIterator, ch chan []byte) {
 	}
 }
 
+func toMapJson (values []bigquery.Value, schema bigquery.Schema) map[string]bigquery.Value {
+	var columnNames = getColumnNames(schema)
+	var dataMapped = make(map[string]bigquery.Value)
+	for i := 0; i < len(columnNames); i++ {
+		if schema[i].Type == "RECORD" {
+			if values[i] == nil {
+				dataMapped[columnNames[i]] = values[i]
+				continue
+			}
+			valuesNested := values[i].([]bigquery.Value)
+			var valuesParsed = make([]map[string]bigquery.Value, len(valuesNested))
+			var aux = make(map[string]bigquery.Value)
+			for c := 0; c < len(valuesNested); c++ {
+				if reflect.TypeOf(valuesNested[c]).Kind() != reflect.Interface &&
+					reflect.TypeOf(valuesNested[c]).Kind() != reflect.Slice {
+					var columnNamesNested = getColumnNames(schema[i].Schema)
+					aux[columnNamesNested[c]] = valuesNested[c]
+					dataMapped[columnNames[i]] = aux
+				} else {
+					valuesParsed[c] = toMapJsonNested(valuesNested[c].([]bigquery.Value), schema[i].Schema)
+					dataMapped[columnNames[i]] = valuesParsed
+				}
+			}
+		} else {
+			dataMapped[columnNames[i]] = values[i]
+		}
+	}
+	return dataMapped
+}
+
+func toMapJsonNested (value []bigquery.Value, schema bigquery.Schema) map[string]bigquery.Value {
+	var columnNames = getColumnNames(schema)
+	var dataMapped = make(map[string]bigquery.Value)
+	for c := 0; c < len(columnNames); c++ {
+		dataMapped[columnNames[c]] = value[c]
+	}
+	return dataMapped
+}
+
 func getColumnNames(schema bigquery.Schema) []string {
-	log.Println("→ BQ →→ Getting column's names from Schema")
 	var columnNames = make([]string, 0)
 	for i := 0; i < len(schema); i++ {
 		columnNames = append(columnNames, schema[i].Name)
