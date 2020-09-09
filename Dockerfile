@@ -1,7 +1,7 @@
 FROM golang:1.14-alpine as development
 
 ENV CGO_ENABLED=1
-ENV APP_NAME=bigquery-to-elasticsearch-tool
+ENV APP_NAME=bq2es-tool
 
 WORKDIR /go/src/app
 
