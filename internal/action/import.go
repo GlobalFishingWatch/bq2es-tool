@@ -53,7 +53,7 @@ func validateFlags(url string, importMode string, onError string) {
 		log.Fatalln("--import-mode should equal to 'recreate' or 'append'")
 	}
 	if strings.TrimRight(onError, "\n") != "delete" && strings.TrimRight(onError, "\n") != "keep"  && strings.TrimRight(onError, "\n") != "reindex" {
-		log.Fatalln("--on-error should equal to 'delete' or 'keep'")
+		log.Fatalln("--on-error should equal to 'delete', 'keep' or 'reindex'")
 	}
 }
 
