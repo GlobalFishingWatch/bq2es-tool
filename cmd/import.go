@@ -17,7 +17,7 @@ func init() {
 	importCmd.Flags().StringP( "index-name", "i", "", "The name of the destination index (required)")
 	importCmd.MarkFlagRequired("index-name")
 	importCmd.Flags().StringP( "import-mode", "m", "recreate", "Import mode [recreate|append]")
-	importCmd.Flags().StringP( "on-error", "e", "delete", "Action to do if command fails [delete|keep]")
+	importCmd.Flags().StringP( "on-error", "e", "reindex", "Action to do if command fails [reindex|delete|keep]")
 
 	viper.BindPFlag("import-project-id", importCmd.Flags().Lookup("project-id"))
 	viper.BindPFlag("import-query", importCmd.Flags().Lookup("query"))
