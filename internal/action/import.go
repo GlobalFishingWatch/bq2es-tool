@@ -1,13 +1,13 @@
 package action
 
 import (
-	"bq2es/types"
-	"bq2es/utils"
 	"bytes"
 	"cloud.google.com/go/bigquery"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/GlobalFishingWatch/bq2es-tool/types"
+	"github.com/GlobalFishingWatch/bq2es-tool/utils"
 	"github.com/dustin/go-humanize"
 	"github.com/elastic/go-elasticsearch/v7"
 	"github.com/elastic/go-elasticsearch/v7/esapi"
