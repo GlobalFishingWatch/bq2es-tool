@@ -49,10 +49,10 @@ Values: [ delete | keep ]. Default: delete
 #### Example
 Here an example of this command:
 ```
-bq2es import 
-  --project-id=world-fishing-827 
-  --query="SELECT * FROM scratch_megan.peru_track_data" 
-  --elastic-search-url="https://gfw:****@elasticsearch.globalfishingwatch.org" 
+bq2es import \
+  --project-id=world-fishing-827 \
+  --query="SELECT * FROM scratch_megan.peru_track_data" \
+  --elastic-search-url="https://gfw:****@elasticsearch.globalfishingwatch.org" \
   --index-name=test-track-data
 ```
 
