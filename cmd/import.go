@@ -35,24 +35,17 @@ var importCmd = &cobra.Command{
 	Short: "Import data from BigQuery to Elasticsearch",
 	Long:  `Import data from BigQuery to Elasticsearch
 Format:
-	bq-to-es-cli import --project-id= --query= --elastic-search-url= --index-name= 
+	bq2es-tool import --project-id= --query= --elastic-search-url= --index-name= 
 Example:
-	bq-to-es-cli import --project-id=world-fishing-827 --query="SELECT * FROM vessels" --elastic-search-url="https://user:password@elastic.gfw.org"`,
+	bq2es-tool import --project-id=world-fishing-827 --query="SELECT * FROM vessels" --elastic-search-url="https://user:password@elastic.gfw.org"`,
 	Run: func(cmd *cobra.Command, args []string) {
-		query := viper.GetString("import-query")
-		elasticSearchUrl := viper.GetString("import-elastic-search-url")
-		projectId := viper.GetString("import-project-id")
-		indexName := viper.GetString("import-index-name")
-		importMode := viper.GetString("import-import-mode")
-		onError := viper.GetString("import-on-error")
-
 		params := types.ImportParams{
-			Query:            query,
-			ElasticSearchUrl: elasticSearchUrl,
-			ProjectId:        projectId,
-			IndexName:        indexName,
-			ImportMode:       importMode,
-			OnError:          onError,
+			Query:            viper.GetString("import-query"),
+			ElasticSearchUrl: viper.GetString("import-elastic-search-url"),
+			ProjectId:        viper.GetString("import-project-id"),
+			IndexName:        viper.GetString("import-index-name"),
+			ImportMode:       viper.GetString("import-import-mode"),
+			OnError:          viper.GetString("import-on-error"),
 		}
 
 		log.Println("→ Executing Import command")

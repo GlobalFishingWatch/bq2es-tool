@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"github.com/GlobalFishingWatch/bq2es-tool/internal/action"
+	"github.com/GlobalFishingWatch/bq2es-tool/types"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"log"
@@ -33,11 +34,14 @@ Format:
 Example:
 	bq2es add-alias --index-name=gfw-tasks-2020 --alias=gfw-tasks --elastic-search-url=https://user:password@elastic.gfw.org`,
 	Run: func(cmd *cobra.Command, args []string) {
-		indexName := viper.GetString("add-alias-index-name")
-		alias := viper.GetString("add-alias-alias")
-		elasticSearchUrl := viper.GetString("add-alias-elastic-search-url")
+		params := types.AddAliasParams{
+			IndexName: viper.GetString("add-alias-index-name"),
+			Alias:                viper.GetString("add-alias-alias"),
+			ElasticSearchUrl: viper.GetString("add-alias-elastic-search-url"),
+		}
+
 		log.Println("→ Executing Add Alias command")
-		action.AddAlias(indexName, alias, elasticSearchUrl)
+		action.AddAlias(params)
 		log.Println("→ Execution completed")
 	},
 }
