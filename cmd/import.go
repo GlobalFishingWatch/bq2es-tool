@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"github.com/GlobalFishingWatch/bq2es-tool/internal/action"
+	"github.com/GlobalFishingWatch/bq2es-tool/types"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"log"
@@ -45,12 +46,17 @@ Example:
 		importMode := viper.GetString("import-import-mode")
 		onError := viper.GetString("import-on-error")
 
-		log.Print(query)
-		log.Print(elasticSearchUrl)
-		log.Print(projectId)
+		params := types.ImportParams{
+			Query:            query,
+			ElasticSearchUrl: elasticSearchUrl,
+			ProjectId:        projectId,
+			IndexName:        indexName,
+			ImportMode:       importMode,
+			OnError:          onError,
+		}
 
 		log.Println("→ Executing Import command")
-		action.ImportBigQueryToElasticSearch(query, elasticSearchUrl, projectId, indexName, importMode, onError)
+		action.ImportBigQueryToElasticSearch(params)
 	},
 }
 
