@@ -7,7 +7,7 @@ and Elastic Search.
 
 Format:
 ```
-bq2es [command] [--flags]
+bq2es-tool [command] [--flags]
 ```
 
 ### Tech Stack:
@@ -49,7 +49,7 @@ Values: [ delete | keep ]. Default: delete
 #### Example
 Here an example of this command:
 ```
-bq2es import \
+bq2es-tool import \
   --project-id=world-fishing-827 \
   --query="SELECT * FROM scratch_megan.peru_track_data" \
   --elastic-search-url="https://gfw:****@elasticsearch.globalfishingwatch.org" \
@@ -80,7 +80,7 @@ No optional flags.
 #### Example
 Here an example of this command:
 ```
-bq2es create-index 
+bq2es-tool create-index 
   --bucket-name=elastic-search-mappings
   --index-name=test-track-data
   --elastic-search-url="https://gfw:****@elasticsearch.globalfishingwatch.org" 
@@ -109,7 +109,7 @@ No optional flags.
 #### Example
 Here an example of this command:
 ```
-bq2es add-alias 
+bq2es-tool add-alias 
     --index-name=gfw-task-2020 
     --alias=gfw-task-alias 
     --elastic-search-url=https://gfw:****@elasticsearch.globalfishingwatch.org

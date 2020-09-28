@@ -2,15 +2,16 @@ package action
 
 import (
 	"github.com/GlobalFishingWatch/bq2es-tool/internal/common"
+	"github.com/GlobalFishingWatch/bq2es-tool/types"
 	"github.com/GlobalFishingWatch/bq2es-tool/utils"
 	"github.com/elastic/go-elasticsearch/v7"
 	"log"
 )
 
-func AddAlias(indexName string, alias string, elasticSearchUrl string) {
-	utils.ValidateUrl(elasticSearchUrl)
-	elasticClient := common.CreateElasticSearchClient(elasticSearchUrl)
-	createAlias(elasticClient, indexName, alias)
+func AddAlias(params types.AddAliasParams) {
+	utils.ValidateUrl(params.ElasticSearchUrl)
+	elasticClient := common.CreateElasticSearchClient(params.ElasticSearchUrl)
+	createAlias(elasticClient, params.IndexName, params.Alias)
 }
 
 func createAlias(elasticClient *elasticsearch.Client, indexName string, alias string) {
