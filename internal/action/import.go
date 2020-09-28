@@ -25,31 +25,30 @@ var bqClient *bigquery.Client
 var onErrorAction string
 var temporalIndexName string
 
-func ImportBigQueryToElasticSearch(query string, url string, projectId string, indexName string, importMode string, onError string) {
+func ImportBigQueryToElasticSearch(params types.ImportParams) {
 
-	validateFlags(url, importMode, onError)
+	validateFlags(params.ElasticSearchUrl, params.ImportMode, params.OnError)
 
 	ctx := context.Background()
-	esClient = common.CreateElasticSearchClient(url)
-	bqClient = common.CreateBigQueryClient(ctx, projectId)
+	esClient = common.CreateElasticSearchClient(params.ElasticSearchUrl)
+	bqClient = common.CreateBigQueryClient(ctx, params.ProjectId)
 
+	onErrorAction = params.OnError
 
-	onErrorAction = onError
-
-	indexExists := common.CheckIfIndexExists(esClient, indexName)
-	if indexExists == true {
+	indexExists := common.CheckIfIndexExists(esClient, params.IndexName)
+	if indexExists == true && onErrorAction == "reindex" {
 		log.Println("→ Reindexing index to avoid losing data")
-		temporalIndexName = indexName  + "-" + time.Now().UTC().Format("2006-01-02") + "-temp"
-		reindex(indexName, temporalIndexName)
+		temporalIndexName = params.IndexName  + "-" + time.Now().UTC().Format("2006-01-02") + "-reindexed"
+		reindex(params.IndexName, temporalIndexName)
 	}
 
 	ch := make(chan []byte, 100)
 
 	log.Println("→ Getting results from big query")
-	getResultsFromBigQuery(ctx, query, ch)
+	getResultsFromBigQuery(ctx, params.Query, ch)
 
 	log.Println("→ Importing results to elasticsearch (Bulk)")
-	importBulk(indexName, importMode, ch)
+	importBulk(params.IndexName, params.ImportMode, ch)
 }
 
 func validateFlags(url string, importMode string, onError string) {
