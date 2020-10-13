@@ -332,7 +332,7 @@ func reindex(sourceIndexName string, destinationIndexName string) {
 
 func preparePayload(buf *bytes.Buffer, document map[string]bigquery.Value) {
 	var meta []byte
-	if _, found := document["pepe"]; found {
+	if _, found := document["id"]; found {
 		meta = []byte(fmt.Sprintf(`{ "index" : { "_id": "%s" }}%s`,document["id"].(string),"\n"))
 	} else {
 		meta = []byte(fmt.Sprintf(`{ "index" : { }%s`, "\n"))
