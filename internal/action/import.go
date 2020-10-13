@@ -42,7 +42,7 @@ func ImportBigQueryToElasticSearch(params types.ImportParams) {
 		reindex(params.IndexName, temporalIndexName)
 	}
 
-	ch := make(chan []byte, 100)
+	ch := make(chan  map[string]bigquery.Value, 100)
 
 	log.Println("→ Getting results from big query")
 	getResultsFromBigQuery(ctx, params.Query, ch)
@@ -65,7 +65,7 @@ func validateFlags(url string, importMode string, onError string) {
 
 
 // BigQuery Functions
-func getResultsFromBigQuery(ctx context.Context, queryRequested string, ch chan []byte) {
+func getResultsFromBigQuery(ctx context.Context, queryRequested string, ch chan  map[string]bigquery.Value) {
 	iterator := makeQuery(ctx, queryRequested)
 	go parseResultsToJson(iterator, ch)
 }
@@ -81,7 +81,7 @@ func makeQuery(ctx context.Context, queryRequested string) (*bigquery.RowIterato
 	return it
 }
 
-func parseResultsToJson(it *bigquery.RowIterator, ch chan []byte) {
+func parseResultsToJson(it *bigquery.RowIterator, ch chan  map[string]bigquery.Value) {
 	log.Println("→ BQ →→ Parsing results to JSON")
 
 	for {
@@ -98,11 +98,13 @@ func parseResultsToJson(it *bigquery.RowIterator, ch chan []byte) {
 
 		var dataMapped = toMapJson(values, it.Schema)
 
-		jsonString, err := json.Marshal(dataMapped)
+		ch <- dataMapped
+
+		/*jsonString, err := json.Marshal(dataMapped)
 		if err != nil {
 			log.Fatalf("→ BQ →→ Error parsing to json: %v", err)
 		}
-		ch <- jsonString
+		ch <- jsonString*/
 	}
 }
 
@@ -155,7 +157,7 @@ func getColumnNames(schema bigquery.Schema) []string {
 
 
 // Elastic Search Functions
-func importBulk(indexName string, importMode string, ch chan []byte) {
+func importBulk(indexName string, importMode string, ch chan map[string]bigquery.Value) {
 	log.Println("→ ES →→ Importing data to ElasticSearch")
 
 	const Batch = 1000
@@ -328,12 +330,22 @@ func reindex(sourceIndexName string, destinationIndexName string) {
 	common.DeleteIndex(esClient, sourceIndexName)
 }
 
-func preparePayload(buf *bytes.Buffer, document []byte) {
-	meta := []byte(fmt.Sprintf(`{ "index" : {  }%s`,"\n"))
-	document = append(document, "\n"...)
-	buf.Grow(len(meta) + len(document))
+func preparePayload(buf *bytes.Buffer, document map[string]bigquery.Value) {
+	var meta []byte
+	if _, found := document["pepe"]; found {
+		meta = []byte(fmt.Sprintf(`{ "index" : { "_id": "%s" }}%s`,document["id"].(string),"\n"))
+	} else {
+		meta = []byte(fmt.Sprintf(`{ "index" : { }%s`, "\n"))
+	}
+
+	body, err := json.Marshal(document)
+	if err != nil {
+		log.Fatalf("→ ES →→ Error parsing to json: %v", err)
+	}
+	body = append(body, "\n"...)
+	buf.Grow(len(meta) + len(body))
 	buf.Write(meta)
-	buf.Write(document)
+	buf.Write(body)
 }
 
 // Reports functions
