@@ -194,13 +194,16 @@ func importBulk(indexName string, importMode string, ch chan map[string]bigquery
 		}
 	}
 
-	if numItems <= Batch {
+
+	if numItems > 0 {
 		currentBatch ++
 		errors, items, indexed := executeBulk(currentBatch, indexName, buf)
 		numErrors += errors
 		numItems += items
 		numIndexed += indexed
+		buf.Reset()
 	}
+
 	createReport(start, numErrors, numIndexed)
 }
 
