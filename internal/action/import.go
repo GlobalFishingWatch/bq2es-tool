@@ -181,8 +181,6 @@ func importBulk(indexName string, importMode string, normalize string, normalize
 	numItems = 0
 	currentBatch = 0
 	for doc := range ch {
-
-		log.Println(normalize)
 		if strings.TrimRight(normalize, "\n") != "" {
 			if doc[normalize] == nil {
 				log.Fatalf("The property %v does not exist on the documents", normalize)
