@@ -183,22 +183,33 @@ func importBulk(indexName string, importMode string, normalize string, normalize
 	for doc := range ch {
 		if strings.TrimRight(normalize, "\n") != "" {
 			if doc[normalize] == nil {
-				log.Fatalf("The property %v does not exist on the documents", normalize)
-			}
-			var jsonStr = []byte(`{"type": "` + normalize +`", "value: "` + doc[normalize].(string) + `"}`)
-			req, err := http.NewRequest("POST", normalizeEndpoint, bytes.NewBuffer(jsonStr))
-			req.Header.Set("Content-Type", "application/json")
-			client := &http.Client{}
-			resp, err := client.Do(req)
-			if err != nil {
-				log.Fatalf("Error normalizing property %s: %s", normalize, err)
-			}
-			defer resp.Body.Close()
-			var responseParsed = types.NormalizeResponse{}
-			err = json.NewDecoder(resp.Body).Decode(&responseParsed)
-			doc["normalized_" + normalize] = responseParsed.Result
-		}
+				log.Printf("The property %v does not exist on the documents", normalize)
+				doc["normalized_" + normalize] = ""
+			} else {
+				value := strings.ReplaceAll(doc[normalize].(string), `\`, `\\`)
+				var requestBody = `{"type": "` + normalize +`", "value": "` + value + `"}`
+				var jsonStr = []byte(requestBody)
+				req, err := http.NewRequest("POST", normalizeEndpoint, bytes.NewBuffer(jsonStr))
+				req.Header.Set("Content-Type", "application/json")
+				client := &http.Client{}
+				resp, err := client.Do(req)
+				if err != nil {
+					log.Fatalf("Error normalizing property %s: %s", normalize, err)
+				}
+				defer resp.Body.Close()
 
+				if resp.StatusCode != 200 {
+					log.Fatalf("Error normalizing the property %s. Error: %s", normalize, resp.Status)
+				}
+				var responseParsed = types.NormalizeResponse{}
+				err = json.NewDecoder(resp.Body).Decode(&responseParsed)
+				if err != nil {
+					log.Fatalf("Error normalizing property %s: %s", normalize, err)
+				}
+				log.Println(responseParsed)
+				doc["normalized_" + normalize] = responseParsed.Result
+			}
+		}
 		preparePayload(&buf, doc)
 		numItems ++
 		if numItems == Batch {
