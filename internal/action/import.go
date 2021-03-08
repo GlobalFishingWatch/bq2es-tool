@@ -14,6 +14,7 @@ import (
 	"github.com/elastic/go-elasticsearch/v7/esapi"
 	"google.golang.org/api/iterator"
 	"log"
+	"net/http"
 	"reflect"
 	"strings"
 	"time"
@@ -27,7 +28,7 @@ var temporalIndexName string
 
 func ImportBigQueryToElasticSearch(params types.ImportParams) {
 
-	validateFlags(params.ElasticSearchUrl, params.ImportMode, params.OnError)
+	validateFlags(params)
 
 	ctx := context.Background()
 	esClient = common.CreateElasticSearchClient(params.ElasticSearchUrl)
@@ -47,25 +48,31 @@ func ImportBigQueryToElasticSearch(params types.ImportParams) {
 	log.Println("→ Getting results from big query")
 	getResultsFromBigQuery(ctx, params.Query, ch)
 
+
 	log.Println("→ Importing results to elasticsearch (Bulk)")
-	importBulk(params.IndexName, params.ImportMode, ch)
+	importBulk(params.IndexName, params.ImportMode, params.Normalize, params.NormalizeEndpoint, ch)
 }
 
-func validateFlags(url string, importMode string, onError string) {
+func validateFlags(params types.ImportParams) {
 
-	utils.ValidateUrl(url)
+	utils.ValidateUrl(params.ElasticSearchUrl)
 
-	if strings.TrimRight(importMode, "\n") != "recreate" && strings.TrimRight(importMode, "\n") != "append" {
+	if strings.TrimRight(params.ImportMode, "\n") != "recreate" && strings.TrimRight(params.ImportMode, "\n") != "append" {
 		log.Fatalln("--import-mode should equal to 'recreate' or 'append'")
 	}
-	if strings.TrimRight(onError, "\n") != "delete" && strings.TrimRight(onError, "\n") != "keep"  && strings.TrimRight(onError, "\n") != "reindex" {
+	if strings.TrimRight(params.OnError, "\n") != "delete" && strings.TrimRight(params.OnError, "\n") != "keep"  && strings.TrimRight(params.OnError, "\n") != "reindex" {
 		log.Fatalln("--on-error should equal to 'delete', 'keep' or 'reindex'")
 	}
+
+	if strings.TrimRight(params.Normalize, "\n") != "" && strings.TrimRight(params.NormalizeEndpoint, "\n") == "" {
+		log.Fatalln("if you set the flag normalized, you must to set the normalize endpoint")
+	}
+
 }
 
 
 // BigQuery Functions
-func getResultsFromBigQuery(ctx context.Context, queryRequested string, ch chan  map[string]bigquery.Value) {
+func getResultsFromBigQuery(ctx context.Context, queryRequested string, ch chan map[string]bigquery.Value) {
 	iterator := makeQuery(ctx, queryRequested)
 	go parseResultsToJson(iterator, ch)
 }
@@ -99,12 +106,6 @@ func parseResultsToJson(it *bigquery.RowIterator, ch chan  map[string]bigquery.V
 		var dataMapped = toMapJson(values, it.Schema)
 
 		ch <- dataMapped
-
-		/*jsonString, err := json.Marshal(dataMapped)
-		if err != nil {
-			log.Fatalf("→ BQ →→ Error parsing to json: %v", err)
-		}
-		ch <- jsonString*/
 	}
 }
 
@@ -157,9 +158,8 @@ func getColumnNames(schema bigquery.Schema) []string {
 
 
 // Elastic Search Functions
-func importBulk(indexName string, importMode string, ch chan map[string]bigquery.Value) {
+func importBulk(indexName string, importMode string, normalize string, normalizeEndpoint string, ch chan map[string]bigquery.Value) {
 	log.Println("→ ES →→ Importing data to ElasticSearch")
-
 	const Batch = 1000
 
 	var (
@@ -181,6 +181,26 @@ func importBulk(indexName string, importMode string, ch chan map[string]bigquery
 	numItems = 0
 	currentBatch = 0
 	for doc := range ch {
+
+		log.Println(normalize)
+		if strings.TrimRight(normalize, "\n") != "" {
+			if doc[normalize] == nil {
+				log.Fatalf("The property %v does not exist on the documents", normalize)
+			}
+			var jsonStr = []byte(`{"type": "` + normalize +`", "value: "` + doc[normalize].(string) + `"}`)
+			req, err := http.NewRequest("POST", normalizeEndpoint, bytes.NewBuffer(jsonStr))
+			req.Header.Set("Content-Type", "application/json")
+			client := &http.Client{}
+			resp, err := client.Do(req)
+			if err != nil {
+				log.Fatalf("Error normalizing property %s: %s", normalize, err)
+			}
+			defer resp.Body.Close()
+			var responseParsed = types.NormalizeResponse{}
+			err = json.NewDecoder(resp.Body).Decode(&responseParsed)
+			doc["normalized_" + normalize] = responseParsed.Result
+		}
+
 		preparePayload(&buf, doc)
 		numItems ++
 		if numItems == Batch {
