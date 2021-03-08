@@ -188,6 +188,7 @@ func importBulk(indexName string, importMode string, normalize string, normalize
 			} else {
 				value := strings.ReplaceAll(doc[normalize].(string), `\`, `\\`)
 				var requestBody = `{"type": "` + normalize +`", "value": "` + value + `"}`
+				log.Println(requestBody)
 				var jsonStr = []byte(requestBody)
 				req, err := http.NewRequest("POST", normalizeEndpoint, bytes.NewBuffer(jsonStr))
 				req.Header.Set("Content-Type", "application/json")
@@ -206,7 +207,6 @@ func importBulk(indexName string, importMode string, normalize string, normalize
 				if err != nil {
 					log.Fatalf("Error normalizing property %s: %s", normalize, err)
 				}
-				log.Println(responseParsed)
 				doc["normalized_" + normalize] = responseParsed.Result
 			}
 		}
