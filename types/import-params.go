@@ -6,5 +6,7 @@ type ImportParams struct {
 	ProjectId string
 	IndexName string
 	ImportMode string
+	Normalize string
+	NormalizeEndpoint string
 	OnError string
 }
