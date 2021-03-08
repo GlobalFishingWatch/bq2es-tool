@@ -187,6 +187,7 @@ func importBulk(indexName string, importMode string, normalize string, normalize
 				doc["normalized_" + normalize] = ""
 			} else {
 				value := strings.ReplaceAll(doc[normalize].(string), `\`, `\\`)
+				value = strings.ReplaceAll(value, `"`, `\"`)
 				var requestBody = `{"type": "` + normalize +`", "value": "` + value + `"}`
 				log.Println(requestBody)
 				var jsonStr = []byte(requestBody)
@@ -199,15 +200,18 @@ func importBulk(indexName string, importMode string, normalize string, normalize
 				}
 				defer resp.Body.Close()
 
-				if resp.StatusCode != 200 {
+				if resp.StatusCode == 500 {
+					doc["normalized_" + normalize] = ""
+				} else if resp.StatusCode != 200 {
 					log.Fatalf("Error normalizing the property %s. Error: %s", normalize, resp.Status)
+				} else {
+					var responseParsed = types.NormalizeResponse{}
+					err = json.NewDecoder(resp.Body).Decode(&responseParsed)
+					if err != nil {
+						log.Fatalf("Error normalizing property %s: %s", normalize, err)
+					}
+					doc["normalized_" + normalize] = responseParsed.Result
 				}
-				var responseParsed = types.NormalizeResponse{}
-				err = json.NewDecoder(resp.Body).Decode(&responseParsed)
-				if err != nil {
-					log.Fatalf("Error normalizing property %s: %s", normalize, err)
-				}
-				doc["normalized_" + normalize] = responseParsed.Result
 			}
 		}
 		preparePayload(&buf, doc)
