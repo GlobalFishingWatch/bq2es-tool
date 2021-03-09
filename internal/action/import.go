@@ -181,7 +181,14 @@ func importBulk(indexName string, importMode string, normalize string, normalize
 		numErrors  int
 		numIndexed int
 		currentBatch  int
+		requestBody map[string]string
+		jsonStr []byte
+		err error
+		req *http.Request
+		resp *http.Response
 	)
+
+	client := &http.Client{}
 
 	start := time.Now().UTC()
 
@@ -195,37 +202,35 @@ func importBulk(indexName string, importMode string, normalize string, normalize
 				log.Printf("The property %v does not exist on the documents", normalize)
 				doc["normalized_" + normalize] = ""
 			} else {
-				value := doc[normalize].(string)
-				requestBody := map[string]string{
+				requestBody = map[string]string{
 					"type": normalize,
-					"value": value,
+					"value": doc[normalize].(string),
 				}
-				jsonStr, err := json.Marshal(requestBody)
+				jsonStr, err = json.Marshal(requestBody)
 				if err != nil {
-					doc["normalized_" + normalize] = value
+					doc["normalized_" + normalize] = doc[normalize].(string)
 				} else {
-					req, err := http.NewRequest("POST", normalizeEndpoint, bytes.NewBuffer(jsonStr))
+					req, err = http.NewRequest("POST", normalizeEndpoint, bytes.NewBuffer(jsonStr))
 					req.Header.Set("Content-Type", "application/json")
-					client := &http.Client{}
-					resp, err := client.Do(req)
+					resp, err = client.Do(req)
 					if err != nil {
 						log.Fatalf("Error normalizing property %s: %s", normalize, err)
 					}
-					defer resp.Body.Close()
 
 					if resp.StatusCode != 200 {
 						log.Printf("Error normalizing the property %s. Error: %s", normalize, resp.Status)
-						doc["normalized_" + normalize] = value
+						doc["normalized_" + normalize] = doc[normalize].(string)
 					} else {
 						var responseParsed = types.NormalizeResponse{}
 						err = json.NewDecoder(resp.Body).Decode(&responseParsed)
 						if err != nil {
 							log.Printf("Error normalizing the property %s. Error: %s", normalize, err)
-							doc["normalized_" + normalize] = value
+							doc["normalized_" + normalize] = doc[normalize].(string)
 						} else {
 							doc["normalized_" + normalize] = responseParsed.Result
 						}
 					}
+					resp.Body.Close()
 				}
 
 			}
