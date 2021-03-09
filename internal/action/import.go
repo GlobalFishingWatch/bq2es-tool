@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -43,14 +44,25 @@ func ImportBigQueryToElasticSearch(params types.ImportParams) {
 		reindex(params.IndexName, temporalIndexName)
 	}
 
-	ch := make(chan  map[string]bigquery.Value, 100)
+	ch := make(chan  map[string]bigquery.Value, 500)
 
 	log.Println("→ Getting results from big query")
 	getResultsFromBigQuery(ctx, params.Query, ch)
 
 
 	log.Println("→ Importing results to elasticsearch (Bulk)")
-	importBulk(params.IndexName, params.ImportMode, params.Normalize, params.NormalizeEndpoint, ch)
+	if strings.TrimRight(params.ImportMode, "\n") == "recreate" {
+		recreateIndex(params.IndexName)
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(wg *sync.WaitGroup, ch chan map[string]bigquery.Value) {
+			importBulk(params.IndexName, params.ImportMode, params.Normalize, params.NormalizeEndpoint, ch)
+			wg.Done()
+		}(&wg, ch)
+	}
+	wg.Wait()
 }
 
 func validateFlags(params types.ImportParams) {
@@ -174,10 +186,6 @@ func importBulk(indexName string, importMode string, normalize string, normalize
 
 	createPreReport(Batch, start)
 
-	if strings.TrimRight(importMode, "\n") == "recreate" {
-		recreateIndex(indexName)
-	}
-
 	numItems = 0
 	currentBatch = 0
 	for doc := range ch {
@@ -186,32 +194,39 @@ func importBulk(indexName string, importMode string, normalize string, normalize
 				log.Printf("The property %v does not exist on the documents", normalize)
 				doc["normalized_" + normalize] = ""
 			} else {
-				value := strings.ReplaceAll(doc[normalize].(string), `\`, `\\`)
-				value = strings.ReplaceAll(value, `"`, `\"`)
-				var requestBody = `{"type": "` + normalize +`", "value": "` + value + `"}`
-				log.Println(requestBody)
-				var jsonStr = []byte(requestBody)
-				req, err := http.NewRequest("POST", normalizeEndpoint, bytes.NewBuffer(jsonStr))
-				req.Header.Set("Content-Type", "application/json")
-				client := &http.Client{}
-				resp, err := client.Do(req)
-				if err != nil {
-					log.Fatalf("Error normalizing property %s: %s", normalize, err)
+				value := doc[normalize].(string)
+				requestBody := map[string]string{
+					"type": normalize,
+					"value": value,
 				}
-				defer resp.Body.Close()
-
-				if resp.StatusCode == 500 {
-					doc["normalized_" + normalize] = ""
-				} else if resp.StatusCode != 200 {
-					log.Fatalf("Error normalizing the property %s. Error: %s", normalize, resp.Status)
+				jsonStr, err := json.Marshal(requestBody)
+				if err != nil {
+					doc["normalized_" + normalize] = value
 				} else {
-					var responseParsed = types.NormalizeResponse{}
-					err = json.NewDecoder(resp.Body).Decode(&responseParsed)
+					req, err := http.NewRequest("POST", normalizeEndpoint, bytes.NewBuffer(jsonStr))
+					req.Header.Set("Content-Type", "application/json")
+					client := &http.Client{}
+					resp, err := client.Do(req)
 					if err != nil {
 						log.Fatalf("Error normalizing property %s: %s", normalize, err)
 					}
-					doc["normalized_" + normalize] = responseParsed.Result
+					defer resp.Body.Close()
+
+					if resp.StatusCode != 200 {
+						log.Printf("Error normalizing the property %s. Error: %s", normalize, resp.Status)
+						doc["normalized_" + normalize] = value
+					} else {
+						var responseParsed = types.NormalizeResponse{}
+						err = json.NewDecoder(resp.Body).Decode(&responseParsed)
+						if err != nil {
+							log.Printf("Error normalizing the property %s. Error: %s", normalize, err)
+							doc["normalized_" + normalize] = value
+						} else {
+							doc["normalized_" + normalize] = responseParsed.Result
+						}
+					}
 				}
+
 			}
 		}
 		preparePayload(&buf, doc)
