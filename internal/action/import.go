@@ -16,6 +16,7 @@ import (
 	"log"
 	"net/http"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -233,29 +234,33 @@ func importBulk(indexName string, importMode string, normalize string, normalize
 		numItems ++
 		if numItems == Batch {
 			currentBatch ++
-			errors, items, indexed := executeBulk(currentBatch, indexName, buf)
+			errors, items, indexed := executeBulk(currentBatch, indexName, &buf)
 			numErrors += errors
 			numItems += items
 			numIndexed += indexed
-			buf.Reset()
 			numItems = 0
+			buf = bytes.Buffer{}
+			log.Println("Cleaning memory")
+			runtime.GC()
 		}
 	}
 
 
 	if numItems > 0 {
 		currentBatch ++
-		errors, items, indexed := executeBulk(currentBatch, indexName, buf)
+		errors, items, indexed := executeBulk(currentBatch, indexName, &buf)
 		numErrors += errors
 		numItems += items
 		numIndexed += indexed
-		buf.Reset()
+		buf = bytes.Buffer{}
+		log.Println("Cleaning memory")
+		runtime.GC()
 	}
 
 	createReport(start, numErrors, numIndexed)
 }
 
-func executeBulk(currentBatch int, indexName string, buf bytes.Buffer) (int, int, int) {
+func executeBulk(currentBatch int, indexName string, buf *bytes.Buffer) (int, int, int) {
 	var (
 		raw map[string]interface{}
 		blk *types.BulkResponse
