@@ -19,6 +19,8 @@ func init() {
 	importCmd.MarkFlagRequired("index-name")
 	importCmd.Flags().StringP( "import-mode", "m", "recreate", "Import mode [recreate|append]")
 	importCmd.Flags().StringP( "normalize", "n", "", "The property name to normalize")
+	importCmd.Flags().StringP( "normalize", "n", "", "The property name to normalize")
+	importCmd.Flags().StringP( "normalize-property-name", "n", "", "The property name to store the normalized value")
 	importCmd.Flags().StringP( "normalize-endpoint", "", "", "The final endpoint to normalize")
 	importCmd.Flags().StringP( "on-error", "e", "reindex", "Action to do if command fails [reindex|delete|keep]")
 
@@ -28,6 +30,7 @@ func init() {
 	viper.BindPFlag("import-index-name", importCmd.Flags().Lookup("index-name"))
 	viper.BindPFlag("import-import-mode", importCmd.Flags().Lookup("import-mode"))
 	viper.BindPFlag("import-normalize", importCmd.Flags().Lookup("normalize"))
+	viper.BindPFlag("import-normalize-property-name", importCmd.Flags().Lookup("normalize-property-name"))
 	viper.BindPFlag("import-normalize-endpoint", importCmd.Flags().Lookup("normalize-endpoint"))
 	viper.BindPFlag("import-on-error", importCmd.Flags().Lookup("on-error"))
 
@@ -44,19 +47,21 @@ Example:
 	bq2es-tool import 
 		--project-id=world-fishing-827 
 		--query="SELECT * FROM vessels" 
-		--normalize=shipname 
+		--normalize=shipname
+		--normalize-property-name=normalizedShipname
 		--normalize-endpoint=https://us-central1-world-fishing-827.cloudfunctions.net/normalize_shipname_http 
 		--elastic-search-url="https://user:password@elastic.gfw.org"`,
 	Run: func(cmd *cobra.Command, args []string) {
 		params := types.ImportParams{
-			Query:            viper.GetString("import-query"),
-			ElasticSearchUrl: viper.GetString("import-elastic-search-url"),
-			ProjectId:        viper.GetString("import-project-id"),
-			IndexName:        viper.GetString("import-index-name"),
-			ImportMode:       viper.GetString("import-import-mode"),
-			Normalize:        viper.GetString("import-normalize"),
-			NormalizeEndpoint:viper.GetString("import-normalize-endpoint"),
-			OnError:          viper.GetString("import-on-error"),
+			Query:            		viper.GetString("import-query"),
+			ElasticSearchUrl: 		viper.GetString("import-elastic-search-url"),
+			ProjectId:        		viper.GetString("import-project-id"),
+			IndexName:        		viper.GetString("import-index-name"),
+			ImportMode:       		viper.GetString("import-import-mode"),
+			Normalize:        		viper.GetString("import-normalize"),
+			NormalizedPropertyName: viper.GetString("import-normalize-property-nam"),
+			NormalizeEndpoint:		viper.GetString("import-normalize-endpoint"),
+			OnError:          		viper.GetString("import-on-error"),
 		}
 
 		log.Println("→ Executing Import command")

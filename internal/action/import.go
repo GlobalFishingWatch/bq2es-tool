@@ -59,7 +59,7 @@ func ImportBigQueryToElasticSearch(params types.ImportParams) {
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
 		go func(wg *sync.WaitGroup, ch chan map[string]bigquery.Value) {
-			importBulk(params.IndexName, params.ImportMode, params.Normalize, params.NormalizeEndpoint, ch)
+			importBulk(params.IndexName, params.ImportMode, params.Normalize, params.NormalizedPropertyName, params.NormalizeEndpoint, ch)
 			wg.Done()
 		}(&wg, ch)
 	}
@@ -79,6 +79,10 @@ func validateFlags(params types.ImportParams) {
 
 	if strings.TrimRight(params.Normalize, "\n") != "" && strings.TrimRight(params.NormalizeEndpoint, "\n") == "" {
 		log.Fatalln("if you set the flag normalized, you must to set the normalize endpoint")
+	}
+
+	if strings.TrimRight(params.Normalize, "\n") != "" && strings.TrimRight(params.NormalizedPropertyName, "\n") == "" {
+		log.Fatalln("if you set the flag normalized, you must to set the normalize property name")
 	}
 
 }
@@ -171,7 +175,7 @@ func getColumnNames(schema bigquery.Schema) []string {
 
 
 // Elastic Search Functions
-func importBulk(indexName string, importMode string, normalize string, normalizeEndpoint string, ch chan map[string]bigquery.Value) {
+func importBulk(indexName string, importMode string, normalize string, normalizePropertyName string, normalizeEndpoint string, ch chan map[string]bigquery.Value) {
 	log.Println("→ ES →→ Importing data to ElasticSearch")
 	const Batch = 1000
 
@@ -200,7 +204,7 @@ func importBulk(indexName string, importMode string, normalize string, normalize
 		if strings.TrimRight(normalize, "\n") != "" {
 			if doc[normalize] == nil {
 				log.Printf("The property %v does not exist on the documents", normalize)
-				doc["normalized_" + normalize] = ""
+				doc[normalizePropertyName] = ""
 			} else {
 				requestBody = map[string]string{
 					"type": normalize,

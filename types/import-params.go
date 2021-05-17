@@ -7,6 +7,7 @@ type ImportParams struct {
 	IndexName string
 	ImportMode string
 	Normalize string
+	NormalizedPropertyName string
 	NormalizeEndpoint string
 	OnError string
 }
