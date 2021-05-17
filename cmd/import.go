@@ -58,7 +58,7 @@ Example:
 			IndexName:        		viper.GetString("import-index-name"),
 			ImportMode:       		viper.GetString("import-import-mode"),
 			Normalize:        		viper.GetString("import-normalize"),
-			NormalizedPropertyName: viper.GetString("import-normalize-property-nam"),
+			NormalizedPropertyName: viper.GetString("import-normalize-property-name"),
 			NormalizeEndpoint:		viper.GetString("import-normalize-endpoint"),
 			OnError:          		viper.GetString("import-on-error"),
 		}
