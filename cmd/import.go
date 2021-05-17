@@ -19,8 +19,7 @@ func init() {
 	importCmd.MarkFlagRequired("index-name")
 	importCmd.Flags().StringP( "import-mode", "m", "recreate", "Import mode [recreate|append]")
 	importCmd.Flags().StringP( "normalize", "n", "", "The property name to normalize")
-	importCmd.Flags().StringP( "normalize", "n", "", "The property name to normalize")
-	importCmd.Flags().StringP( "normalize-property-name", "n", "", "The property name to store the normalized value")
+	importCmd.Flags().StringP( "normalize-property-name", "", "", "The property name to store the normalized value")
 	importCmd.Flags().StringP( "normalize-endpoint", "", "", "The final endpoint to normalize")
 	importCmd.Flags().StringP( "on-error", "e", "reindex", "Action to do if command fails [reindex|delete|keep]")
 
