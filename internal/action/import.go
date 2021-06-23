@@ -222,7 +222,7 @@ func importBulk(indexName string, importMode string, normalize string, normalize
 					}
 
 					if resp.StatusCode != 200 {
-						log.Printf("Error normalizing the property %s. Error: %s", normalize, resp.Status)
+						log.Printf("Error normalizing the property %s. Value: %s. Error: %s", normalize, doc[normalize].(string), resp.Status)
 						doc["normalized_" + normalize] = doc[normalize].(string)
 					} else {
 						var responseParsed = types.NormalizeResponse{}
