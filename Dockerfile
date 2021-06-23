@@ -12,5 +12,6 @@ RUN go build -o bq2es-tool main.go
 CMD ["reflex", "-c", "./reflex.conf"]
 
 FROM alpine AS build
-COPY --from=development /go/src/app/bq2es-tool /opt/bq2es-tool
+WORKDIR /opt/
+COPY --from=development /go/src/app/bq2es-tool bq2es-tool
 ENTRYPOINT ["/opt/bq2es-tool"]
