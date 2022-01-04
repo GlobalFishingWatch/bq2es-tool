@@ -1,6 +1,6 @@
 package main
 
-import "bq2es/cmd"
+import "github.com/GlobalFishingWatch/bq2es-tool/cmd"
 
 func main() {
 	cmd.Execute()

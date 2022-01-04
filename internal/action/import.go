@@ -1,75 +1,103 @@
 package action
 
 import (
-	"bq2es/types"
 	"bytes"
 	"cloud.google.com/go/bigquery"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/GlobalFishingWatch/bq2es-tool/internal/common"
+	"github.com/GlobalFishingWatch/bq2es-tool/types"
+	"github.com/GlobalFishingWatch/bq2es-tool/utils"
 	"github.com/dustin/go-humanize"
 	"github.com/elastic/go-elasticsearch/v7"
 	"github.com/elastic/go-elasticsearch/v7/esapi"
 	"google.golang.org/api/iterator"
 	"log"
-	"regexp"
+	"net/http"
+	"reflect"
+	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
-var elasticUrl string
+var esClient *elasticsearch.Client
+var bqClient *bigquery.Client
+
 var onErrorAction string
+var temporalIndexName string
 
-func ImportBigQueryToElasticSearch(query string, url string, projectId string, indexName string, importMode string, onError string) {
+func ImportBigQueryToElasticSearch(params types.ImportParams) {
 
-	validateFlags(url, importMode, onError)
+	validateFlags(params)
 
-	elasticUrl = url
-	onErrorAction = onError
-	ch := make(chan []byte, 100)
+	ctx := context.Background()
+	esClient = common.CreateElasticSearchClient(params.ElasticSearchUrl)
+	bqClient = common.CreateBigQueryClient(ctx, params.ProjectId)
+
+	onErrorAction = params.OnError
+
+	indexExists := common.CheckIfIndexExists(esClient, params.IndexName)
+	if indexExists == true && onErrorAction == "reindex" {
+		log.Println("→ Reindexing index to avoid losing data")
+		temporalIndexName = params.IndexName  + "-" + time.Now().UTC().Format("2006-01-02") + "-reindexed"
+		reindex(params.IndexName, temporalIndexName)
+	}
+
+	ch := make(chan  map[string]bigquery.Value, 500)
 
 	log.Println("→ Getting results from big query")
-	getResultsFromBigQuery(projectId, query, ch)
+	getResultsFromBigQuery(ctx, params.Query, ch)
+
 
 	log.Println("→ Importing results to elasticsearch (Bulk)")
-	importBulk(indexName, importMode, ch)
+	if strings.TrimRight(params.ImportMode, "\n") == "recreate" {
+		recreateIndex(params.IndexName)
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(wg *sync.WaitGroup, ch chan map[string]bigquery.Value) {
+			importBulk(params.IndexName, params.ImportMode, params.Normalize, params.NormalizedPropertyName, params.NormalizeEndpoint, ch)
+			wg.Done()
+		}(&wg, ch)
+	}
+	wg.Wait()
 }
 
-func validateFlags(url string, importMode string, onError string) {
+func validateFlags(params types.ImportParams) {
 
-	re := regexp.MustCompile(`^http://(.*)|^https://(.*)`)
-	match := re.Match([]byte(url))
-	if !match {
-		log.Fatalln("--elastic-search-url should start with 'http://' or 'https://'")
-	}
+	utils.ValidateUrl(params.ElasticSearchUrl)
 
-	if strings.TrimRight(importMode, "\n") != "recreate" && strings.TrimRight(importMode, "\n") != "append" {
+	if strings.TrimRight(params.ImportMode, "\n") != "recreate" && strings.TrimRight(params.ImportMode, "\n") != "append" {
 		log.Fatalln("--import-mode should equal to 'recreate' or 'append'")
 	}
-	if strings.TrimRight(onError, "\n") != "delete" && strings.TrimRight(onError, "\n") != "keep" {
-		log.Fatalln("--on-error should equal to 'delete' or 'keep'")
+	if strings.TrimRight(params.OnError, "\n") != "delete" && strings.TrimRight(params.OnError, "\n") != "keep"  && strings.TrimRight(params.OnError, "\n") != "reindex" {
+		log.Fatalln("--on-error should equal to 'delete', 'keep' or 'reindex'")
 	}
+
+	if strings.TrimRight(params.Normalize, "\n") != "" && strings.TrimRight(params.NormalizeEndpoint, "\n") == "" {
+		log.Fatalln("if you set the flag normalized, you must to set the normalize endpoint")
+	}
+
+	if strings.TrimRight(params.Normalize, "\n") != "" && strings.TrimRight(params.NormalizedPropertyName, "\n") == "" {
+		log.Fatalln("if you set the flag normalized, you must to set the normalize property name")
+	}
+
 }
 
-func getResultsFromBigQuery(projectId string, queryRequested string, ch chan []byte) {
-	ctx := context.Background()
-	client := createBigQueryClient(ctx, projectId)
-	iterator := makeQuery(ctx, client, queryRequested)
+
+// BigQuery Functions
+func getResultsFromBigQuery(ctx context.Context, queryRequested string, ch chan map[string]bigquery.Value) {
+	iterator := makeQuery(ctx, queryRequested)
 	go parseResultsToJson(iterator, ch)
 }
 
-func createBigQueryClient(ctx context.Context, projectId string) *bigquery.Client {
-	client, err := bigquery.NewClient(ctx, projectId)
-	if err != nil {
-		log.Fatalf("→ BQ →→ bigquery.NewClient: %v", err)
-	}
-	defer client.Close()
-	return client
-}
-
-func makeQuery(ctx context.Context, client *bigquery.Client, queryRequested string) (*bigquery.RowIterator) {
+func makeQuery(ctx context.Context, queryRequested string) (*bigquery.RowIterator) {
 	log.Println("→ BQ →→ Making query to get data from bigQuery")
-	query := client.Query(queryRequested)
+	query := bqClient.Query(queryRequested)
+	query.AllowLargeResults = true
 	it, err := query.Read(ctx)
 	if err != nil {
 		log.Fatalf("→ BQ →→ Error counting rows: %v", err)
@@ -77,9 +105,9 @@ func makeQuery(ctx context.Context, client *bigquery.Client, queryRequested stri
 	return it
 }
 
-func parseResultsToJson(it *bigquery.RowIterator, ch chan []byte) {
+func parseResultsToJson(it *bigquery.RowIterator, ch chan  map[string]bigquery.Value) {
 	log.Println("→ BQ →→ Parsing results to JSON")
-	var columnNames = getColumnNames(it.Schema)
+
 	for {
 		var values []bigquery.Value
 		err := it.Next(&values)
@@ -92,22 +120,52 @@ func parseResultsToJson(it *bigquery.RowIterator, ch chan []byte) {
 			log.Fatalf("→ BQ →→ Error: %v", err)
 		}
 
-		var dataMapped = make(map[string]bigquery.Value)
+		var dataMapped = toMapJson(values, it.Schema)
 
-		for i := 0; i < len(columnNames); i++ {
-			dataMapped[columnNames[i]] = values[i]
-		}
-
-		jsonString, err := json.Marshal(dataMapped)
-		if err != nil {
-			log.Fatalf("→ BQ →→ Error parsing to json: %v", err)
-		}
-		ch <- jsonString
+		ch <- dataMapped
 	}
 }
 
+func toMapJson (values []bigquery.Value, schema bigquery.Schema) map[string]bigquery.Value {
+	var columnNames = getColumnNames(schema)
+	var dataMapped = make(map[string]bigquery.Value)
+	for i := 0; i < len(columnNames); i++ {
+		if schema[i].Type == "RECORD" {
+			if values[i] == nil {
+				dataMapped[columnNames[i]] = values[i]
+				continue
+			}
+			valuesNested := values[i].([]bigquery.Value)
+			var valuesParsed = make([]map[string]bigquery.Value, len(valuesNested))
+			var aux = make(map[string]bigquery.Value)
+			for c := 0; c < len(valuesNested); c++ {
+				if reflect.TypeOf(valuesNested[c]).Kind() != reflect.Interface &&
+					reflect.TypeOf(valuesNested[c]).Kind() != reflect.Slice {
+					var columnNamesNested = getColumnNames(schema[i].Schema)
+					aux[columnNamesNested[c]] = valuesNested[c]
+					dataMapped[columnNames[i]] = aux
+				} else {
+					valuesParsed[c] = toMapJsonNested(valuesNested[c].([]bigquery.Value), schema[i].Schema)
+					dataMapped[columnNames[i]] = valuesParsed
+				}
+			}
+		} else {
+			dataMapped[columnNames[i]] = values[i]
+		}
+	}
+	return dataMapped
+}
+
+func toMapJsonNested (value []bigquery.Value, schema bigquery.Schema) map[string]bigquery.Value {
+	var columnNames = getColumnNames(schema)
+	var dataMapped = make(map[string]bigquery.Value)
+	for c := 0; c < len(columnNames); c++ {
+		dataMapped[columnNames[c]] = value[c]
+	}
+	return dataMapped
+}
+
 func getColumnNames(schema bigquery.Schema) []string {
-	log.Println("→ BQ →→ Getting column's names from Schema")
 	var columnNames = make([]string, 0)
 	for i := 0; i < len(schema); i++ {
 		columnNames = append(columnNames, schema[i].Name)
@@ -115,9 +173,10 @@ func getColumnNames(schema bigquery.Schema) []string {
 	return columnNames
 }
 
-func importBulk(indexName string, importMode string, ch chan []byte) {
-	log.Println("→ ES →→ Importing data to ElasticSearch")
 
+// Elastic Search Functions
+func importBulk(indexName string, importMode string, normalize string, normalizePropertyName string, normalizeEndpoint string, ch chan map[string]bigquery.Value) {
+	log.Println("→ ES →→ Importing data to ElasticSearch")
 	const Batch = 1000
 
 	var (
@@ -126,47 +185,92 @@ func importBulk(indexName string, importMode string, ch chan []byte) {
 		numErrors  int
 		numIndexed int
 		currentBatch  int
+		requestBody map[string]string
+		jsonStr []byte
+		err error
+		req *http.Request
+		resp *http.Response
 	)
+
+	client := &http.Client{}
 
 	start := time.Now().UTC()
 
 	createPreReport(Batch, start)
 
-	if strings.TrimRight(importMode, "\n") == "recreate" {
-		recreateIndex(indexName)
-	}
-
 	numItems = 0
 	currentBatch = 0
 	for doc := range ch {
+		if strings.TrimRight(normalize, "\n") != "" {
+			if doc[normalize] == nil {
+				log.Printf("The property %v does not exist on the documents", normalize)
+				doc[normalizePropertyName] = ""
+			} else {
+				requestBody = map[string]string{
+					"type": normalize,
+					"value": doc[normalize].(string),
+				}
+				jsonStr, err = json.Marshal(requestBody)
+				if err != nil {
+					doc["normalized_" + normalize] = doc[normalize].(string)
+				} else {
+					req, err = http.NewRequest("POST", normalizeEndpoint, bytes.NewBuffer(jsonStr))
+					req.Header.Set("Content-Type", "application/json")
+					resp, err = client.Do(req)
+					if err != nil {
+						log.Fatalf("Error normalizing property %s: %s", normalize, err)
+					}
+
+					if resp.StatusCode != 200 {
+						log.Printf("Error normalizing the property %s. Value: %s. Error: %s", normalize, doc[normalize].(string), resp.Status)
+						doc["normalized_" + normalize] = doc[normalize].(string)
+					} else {
+						var responseParsed = types.NormalizeResponse{}
+						err = json.NewDecoder(resp.Body).Decode(&responseParsed)
+						if err != nil {
+							log.Printf("Error normalizing the property %s. Error: %s", normalize, err)
+							doc["normalized_" + normalize] = doc[normalize].(string)
+						} else {
+							doc["normalized_" + normalize] = responseParsed.Result
+						}
+					}
+					resp.Body.Close()
+				}
+
+			}
+		}
 		preparePayload(&buf, doc)
 		numItems ++
 		if numItems == Batch {
 			currentBatch ++
-			errors, items, indexed := executeBulk(currentBatch, indexName, buf)
+			errors, items, indexed := executeBulk(currentBatch, indexName, &buf)
 			numErrors += errors
 			numItems += items
 			numIndexed += indexed
-			buf.Reset()
 			numItems = 0
+			buf = bytes.Buffer{}
+			log.Println("Cleaning memory")
+			runtime.GC()
 		}
 	}
 
-	if numItems <= Batch {
+
+	if numItems > 0 {
 		currentBatch ++
-		errors, items, indexed := executeBulk(currentBatch, indexName, buf)
+		errors, items, indexed := executeBulk(currentBatch, indexName, &buf)
 		numErrors += errors
 		numItems += items
 		numIndexed += indexed
+		buf = bytes.Buffer{}
+		log.Println("Cleaning memory")
+		runtime.GC()
 	}
+
 	createReport(start, numErrors, numIndexed)
 }
 
-func executeBulk(currentBatch int, indexName string, buf bytes.Buffer) (int, int, int) {
+func executeBulk(currentBatch int, indexName string, buf *bytes.Buffer) (int, int, int) {
 	var (
-		res *esapi.Response
-		err error
-		es *elasticsearch.Client
 		raw map[string]interface{}
 		blk *types.BulkResponse
 		numErrors int
@@ -174,22 +278,17 @@ func executeBulk(currentBatch int, indexName string, buf bytes.Buffer) (int, int
 		numIndexed int
 	)
 
-	es = getElasticClient(elasticUrl)
 	log.Printf("Batch [%d]", currentBatch)
 
-	res, err = es.Bulk(bytes.NewReader(buf.Bytes()), es.Bulk.WithIndex(indexName))
+	res, err := esClient.Bulk(bytes.NewReader(buf.Bytes()), esClient.Bulk.WithIndex(indexName))
 	if err != nil {
-		if onErrorAction == "delete" {
-			deleteIndex(indexName)
-		}
+		executeOnErrorAction(indexName)
 		log.Fatalf("Failure indexing Batch %d: %s", currentBatch, err)
 	}
 
 	if res.IsError() {
 		numErrors += numItems
-		if onErrorAction == "delete" {
-			deleteIndex(indexName)
-		}
+		executeOnErrorAction(indexName)
 		if err := json.NewDecoder(res.Body).Decode(&raw); err != nil {
 			log.Fatalf("Failure to to parse response body: %s", err)
 		}
@@ -201,18 +300,14 @@ func executeBulk(currentBatch int, indexName string, buf bytes.Buffer) (int, int
 	}
 
 	if err := json.NewDecoder(res.Body).Decode(&blk); err != nil {
-		if onErrorAction == "delete" {
-			deleteIndex(indexName)
-		}
+		executeOnErrorAction(indexName)
 		log.Fatalf("Failure to to parse response body: %s", err)
 	}
 
 	for _, d := range blk.Items {
 		if d.Index.Status > 201 {
 			numErrors++
-			if onErrorAction == "delete" {
-				deleteIndex(indexName)
-			}
+			executeOnErrorAction(indexName)
 			log.Fatalf("  Error: [%d]: %s: %s: %s: %s",
 				d.Index.Status,
 				d.Index.Error.Type,
@@ -227,29 +322,21 @@ func executeBulk(currentBatch int, indexName string, buf bytes.Buffer) (int, int
 	return numErrors, numItems, numIndexed
 }
 
-func getElasticClient(address string) *elasticsearch.Client {
-	cfg := elasticsearch.Config{
-		Addresses: []string{address},
+func executeOnErrorAction(indexName string) {
+	if onErrorAction == "delete" {
+		common.DeleteIndex(esClient, indexName)
 	}
-	es, err := elasticsearch.NewClient(cfg)
-	if err != nil {
-		log.Fatalf("→ ES →→ Error creating the client: %s", err)
+	if onErrorAction == "reindex" {
+		common.DeleteIndex(esClient, indexName)
+		reindex(temporalIndexName, indexName)
+		common.DeleteIndex(esClient, temporalIndexName)
 	}
-	return es
 }
 
 func recreateIndex(indexName string) {
-
-	var (
-		res *esapi.Response
-		err error
-		es *elasticsearch.Client
-	)
-
-	es = getElasticClient(elasticUrl)
 	log.Printf("→ ES →→ Recreating index with name %v\n", indexName)
-	deleteIndex(indexName)
-	res, err = es.Indices.Create(indexName)
+	common.DeleteIndex(esClient, indexName)
+	res, err := esClient.Indices.Create(indexName)
 	if err != nil {
 		log.Fatalf("→ ES →→ Cannot create index: %s", err)
 	}
@@ -258,28 +345,75 @@ func recreateIndex(indexName string) {
 	}
 }
 
-func deleteIndex(indexName string) {
-	var (
-		err error
-		es *elasticsearch.Client
-	)
-
-	es = getElasticClient(elasticUrl)
-	log.Printf("→ ES →→ Deleting index with name %v\n", indexName)
-	if _, err = es.Indices.Delete([]string{indexName}); err != nil {
-		log.Fatalf("→ ES →→ Cannot delete index: %s", err)
+func reindex(sourceIndexName string, destinationIndexName string) {
+	existsDestinationIndex := common.CheckIfIndexExists(esClient, destinationIndexName)
+	if existsDestinationIndex == true {
+		common.DeleteIndex(esClient, destinationIndexName)
 	}
+
+	log.Printf("→ ES →→ Reindexing from %s to %s\n", sourceIndexName, destinationIndexName)
+	reindexBody := map[string]map[string]string{
+		"source": {"index": sourceIndexName},
+		"dest": {"index": destinationIndexName},
+	}
+	body, err := json.Marshal(reindexBody)
+	if err != nil {
+		log.Fatalf("→ ES →→ Error creating body to reindex %s", err)
+	}
+
+	res, err := esClient.Reindex(bytes.NewReader(body), func(request *esapi.ReindexRequest) {
+		waitForCompletion := false
+		request.WaitForCompletion = &waitForCompletion
+	})
+	if err != nil {
+		log.Fatalf("→ ES →→ Error requesting reindex %s", err)
+	}
+	if res.IsError() {
+		log.Fatalf("→ ES →→ Cannot reindex: %s", res)
+	}
+
+	responseBody := utils.ParseEsAPIResponse(res)
+	taskId := responseBody["task"].(string)
+	log.Printf("→ ES →→ Reindex process started async. Task id: %s \n", taskId)
+
+	for {
+		res, err := esClient.Tasks.Get(taskId)
+		if err != nil {
+			log.Fatalf("→ ES →→ Error requesting reindex %s", err)
+		}
+		if res.IsError() {
+			log.Fatalf("→ ES →→ Cannot reindex: %s", res)
+		}
+		responseBody = utils.ParseEsAPIResponse(res)
+		taskStatus := responseBody["completed"].(bool)
+		if taskStatus == true {
+			break
+		}
+		time.Sleep(5000 * time.Millisecond)
+	}
+	log.Println("→ ES →→ Reindex process completed")
+	common.DeleteIndex(esClient, sourceIndexName)
 }
 
+func preparePayload(buf *bytes.Buffer, document map[string]bigquery.Value) {
+	var meta []byte
+	if _, found := document["id"]; found {
+		meta = []byte(fmt.Sprintf(`{ "index" : { "_id": "%s" }}%s`,document["id"].(string),"\n"))
+	} else {
+		meta = []byte(fmt.Sprintf(`{ "index" : { }%s`, "\n"))
+	}
 
-func preparePayload(buf *bytes.Buffer, document []byte) {
-	meta := []byte(fmt.Sprintf(`{ "index" : {  }%s`,"\n"))
-	document = append(document, "\n"...)
-	buf.Grow(len(meta) + len(document))
+	body, err := json.Marshal(document)
+	if err != nil {
+		log.Fatalf("→ ES →→ Error parsing to json: %v", err)
+	}
+	body = append(body, "\n"...)
+	buf.Grow(len(meta) + len(body))
 	buf.Write(meta)
-	buf.Write(document)
+	buf.Write(body)
 }
 
+// Reports functions
 func createPreReport(Batch int, start time.Time) {
 	log.Printf(
 		"→ ES →→ \x1b[1mBulk\x1b[0m: Batch size [%s]",
