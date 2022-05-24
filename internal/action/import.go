@@ -41,15 +41,14 @@ func ImportBigQueryToElasticSearch(params types.ImportParams) {
 	indexExists := common.CheckIfIndexExists(esClient, params.IndexName)
 	if indexExists == true && onErrorAction == "reindex" {
 		log.Println("→ Reindexing index to avoid losing data")
-		temporalIndexName = params.IndexName  + "-" + time.Now().UTC().Format("2006-01-02") + "-reindexed"
+		temporalIndexName = params.IndexName + "-" + time.Now().UTC().Format("2006-01-02") + "-reindexed"
 		reindex(params.IndexName, temporalIndexName)
 	}
 
-	ch := make(chan  map[string]bigquery.Value, 500)
+	ch := make(chan map[string]bigquery.Value, 500)
 
 	log.Println("→ Getting results from big query")
 	getResultsFromBigQuery(ctx, params.Query, ch)
-
 
 	log.Println("→ Importing results to elasticsearch (Bulk)")
 	if strings.TrimRight(params.ImportMode, "\n") == "recreate" {
@@ -73,7 +72,7 @@ func validateFlags(params types.ImportParams) {
 	if strings.TrimRight(params.ImportMode, "\n") != "recreate" && strings.TrimRight(params.ImportMode, "\n") != "append" {
 		log.Fatalln("--import-mode should equal to 'recreate' or 'append'")
 	}
-	if strings.TrimRight(params.OnError, "\n") != "delete" && strings.TrimRight(params.OnError, "\n") != "keep"  && strings.TrimRight(params.OnError, "\n") != "reindex" {
+	if strings.TrimRight(params.OnError, "\n") != "delete" && strings.TrimRight(params.OnError, "\n") != "keep" && strings.TrimRight(params.OnError, "\n") != "reindex" {
 		log.Fatalln("--on-error should equal to 'delete', 'keep' or 'reindex'")
 	}
 
@@ -87,14 +86,13 @@ func validateFlags(params types.ImportParams) {
 
 }
 
-
 // BigQuery Functions
 func getResultsFromBigQuery(ctx context.Context, queryRequested string, ch chan map[string]bigquery.Value) {
 	iterator := makeQuery(ctx, queryRequested)
 	go parseResultsToJson(iterator, ch)
 }
 
-func makeQuery(ctx context.Context, queryRequested string) (*bigquery.RowIterator) {
+func makeQuery(ctx context.Context, queryRequested string) *bigquery.RowIterator {
 	log.Println("→ BQ →→ Making query to get data from bigQuery")
 	query := bqClient.Query(queryRequested)
 	query.AllowLargeResults = true
@@ -105,7 +103,7 @@ func makeQuery(ctx context.Context, queryRequested string) (*bigquery.RowIterato
 	return it
 }
 
-func parseResultsToJson(it *bigquery.RowIterator, ch chan  map[string]bigquery.Value) {
+func parseResultsToJson(it *bigquery.RowIterator, ch chan map[string]bigquery.Value) {
 	log.Println("→ BQ →→ Parsing results to JSON")
 
 	for {
@@ -121,12 +119,11 @@ func parseResultsToJson(it *bigquery.RowIterator, ch chan  map[string]bigquery.V
 		}
 
 		var dataMapped = toMapJson(values, it.Schema)
-
 		ch <- dataMapped
 	}
 }
 
-func toMapJson (values []bigquery.Value, schema bigquery.Schema) map[string]bigquery.Value {
+func toMapJson(values []bigquery.Value, schema bigquery.Schema) map[string]bigquery.Value {
 	var columnNames = getColumnNames(schema)
 	var dataMapped = make(map[string]bigquery.Value)
 	for i := 0; i < len(columnNames); i++ {
@@ -138,6 +135,10 @@ func toMapJson (values []bigquery.Value, schema bigquery.Schema) map[string]bigq
 			valuesNested := values[i].([]bigquery.Value)
 			var valuesParsed = make([]map[string]bigquery.Value, len(valuesNested))
 			var aux = make(map[string]bigquery.Value)
+			if len(valuesNested) == 0 {
+				dataMapped[columnNames[i]] = values[i]
+				continue
+			}
 			for c := 0; c < len(valuesNested); c++ {
 				if reflect.TypeOf(valuesNested[c]).Kind() != reflect.Interface &&
 					reflect.TypeOf(valuesNested[c]).Kind() != reflect.Slice {
@@ -149,6 +150,7 @@ func toMapJson (values []bigquery.Value, schema bigquery.Schema) map[string]bigq
 					dataMapped[columnNames[i]] = valuesParsed
 				}
 			}
+
 		} else {
 			dataMapped[columnNames[i]] = values[i]
 		}
@@ -156,7 +158,7 @@ func toMapJson (values []bigquery.Value, schema bigquery.Schema) map[string]bigq
 	return dataMapped
 }
 
-func toMapJsonNested (value []bigquery.Value, schema bigquery.Schema) map[string]bigquery.Value {
+func toMapJsonNested(value []bigquery.Value, schema bigquery.Schema) map[string]bigquery.Value {
 	var columnNames = getColumnNames(schema)
 	var dataMapped = make(map[string]bigquery.Value)
 	for c := 0; c < len(columnNames); c++ {
@@ -173,23 +175,22 @@ func getColumnNames(schema bigquery.Schema) []string {
 	return columnNames
 }
 
-
 // Elastic Search Functions
 func importBulk(indexName string, importMode string, normalize string, normalizePropertyName string, normalizeEndpoint string, ch chan map[string]bigquery.Value) {
 	log.Println("→ ES →→ Importing data to ElasticSearch")
 	const Batch = 1000
 
 	var (
-		buf bytes.Buffer
-		numItems   int
-		numErrors  int
-		numIndexed int
-		currentBatch  int
-		requestBody map[string]string
-		jsonStr []byte
-		err error
-		req *http.Request
-		resp *http.Response
+		buf          bytes.Buffer
+		numItems     int
+		numErrors    int
+		numIndexed   int
+		currentBatch int
+		requestBody  map[string]string
+		jsonStr      []byte
+		err          error
+		req          *http.Request
+		resp         *http.Response
 	)
 
 	client := &http.Client{}
@@ -207,12 +208,12 @@ func importBulk(indexName string, importMode string, normalize string, normalize
 				doc[normalizePropertyName] = ""
 			} else {
 				requestBody = map[string]string{
-					"type": normalize,
+					"type":  normalize,
 					"value": doc[normalize].(string),
 				}
 				jsonStr, err = json.Marshal(requestBody)
 				if err != nil {
-					doc["normalized_" + normalize] = doc[normalize].(string)
+					doc["normalized_"+normalize] = doc[normalize].(string)
 				} else {
 					req, err = http.NewRequest("POST", normalizeEndpoint, bytes.NewBuffer(jsonStr))
 					req.Header.Set("Content-Type", "application/json")
@@ -223,15 +224,15 @@ func importBulk(indexName string, importMode string, normalize string, normalize
 
 					if resp.StatusCode != 200 {
 						log.Printf("Error normalizing the property %s. Value: %s. Error: %s", normalize, doc[normalize].(string), resp.Status)
-						doc["normalized_" + normalize] = doc[normalize].(string)
+						doc["normalized_"+normalize] = doc[normalize].(string)
 					} else {
 						var responseParsed = types.NormalizeResponse{}
 						err = json.NewDecoder(resp.Body).Decode(&responseParsed)
 						if err != nil {
 							log.Printf("Error normalizing the property %s. Error: %s", normalize, err)
-							doc["normalized_" + normalize] = doc[normalize].(string)
+							doc["normalized_"+normalize] = doc[normalize].(string)
 						} else {
-							doc["normalized_" + normalize] = responseParsed.Result
+							doc["normalized_"+normalize] = responseParsed.Result
 						}
 					}
 					resp.Body.Close()
@@ -240,9 +241,9 @@ func importBulk(indexName string, importMode string, normalize string, normalize
 			}
 		}
 		preparePayload(&buf, doc)
-		numItems ++
+		numItems++
 		if numItems == Batch {
-			currentBatch ++
+			currentBatch++
 			errors, items, indexed := executeBulk(currentBatch, indexName, &buf)
 			numErrors += errors
 			numItems += items
@@ -254,9 +255,8 @@ func importBulk(indexName string, importMode string, normalize string, normalize
 		}
 	}
 
-
 	if numItems > 0 {
-		currentBatch ++
+		currentBatch++
 		errors, items, indexed := executeBulk(currentBatch, indexName, &buf)
 		numErrors += errors
 		numItems += items
@@ -271,10 +271,10 @@ func importBulk(indexName string, importMode string, normalize string, normalize
 
 func executeBulk(currentBatch int, indexName string, buf *bytes.Buffer) (int, int, int) {
 	var (
-		raw map[string]interface{}
-		blk *types.BulkResponse
-		numErrors int
-		numItems int
+		raw        map[string]interface{}
+		blk        *types.BulkResponse
+		numErrors  int
+		numItems   int
 		numIndexed int
 	)
 
@@ -354,7 +354,7 @@ func reindex(sourceIndexName string, destinationIndexName string) {
 	log.Printf("→ ES →→ Reindexing from %s to %s\n", sourceIndexName, destinationIndexName)
 	reindexBody := map[string]map[string]string{
 		"source": {"index": sourceIndexName},
-		"dest": {"index": destinationIndexName},
+		"dest":   {"index": destinationIndexName},
 	}
 	body, err := json.Marshal(reindexBody)
 	if err != nil {
@@ -398,7 +398,7 @@ func reindex(sourceIndexName string, destinationIndexName string) {
 func preparePayload(buf *bytes.Buffer, document map[string]bigquery.Value) {
 	var meta []byte
 	if _, found := document["id"]; found {
-		meta = []byte(fmt.Sprintf(`{ "index" : { "_id": "%s" }}%s`,document["id"].(string),"\n"))
+		meta = []byte(fmt.Sprintf(`{ "index" : { "_id": "%s" }}%s`, document["id"].(string), "\n"))
 	} else {
 		meta = []byte(fmt.Sprintf(`{ "index" : { }%s`, "\n"))
 	}
