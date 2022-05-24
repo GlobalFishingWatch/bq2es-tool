@@ -137,7 +137,7 @@ func toMapJson(values []bigquery.Value, schema bigquery.Schema) map[string]bigqu
 			var valuesParsed = make([]map[string]bigquery.Value, len(valuesNested))
 			var aux = make(map[string]bigquery.Value)
 			if len(valuesNested) == 0 {
-				dataMapped[columnNames[i]] = values[i]
+				dataMapped[columnNames[i]] = valuesNested
 				continue
 			}
 			for c := 0; c < len(valuesNested); c++ {
