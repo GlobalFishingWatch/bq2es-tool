@@ -119,6 +119,7 @@ func parseResultsToJson(it *bigquery.RowIterator, ch chan map[string]bigquery.Va
 		}
 
 		var dataMapped = toMapJson(values, it.Schema)
+		log.Println(dataMapped, "<==")
 		ch <- dataMapped
 	}
 }
