@@ -119,7 +119,6 @@ func parseResultsToJson(it *bigquery.RowIterator, ch chan map[string]bigquery.Va
 		}
 
 		var dataMapped = toMapJson(values, it.Schema)
-		log.Println(dataMapped, "<==")
 		ch <- dataMapped
 	}
 }
@@ -205,7 +204,7 @@ func importBulk(indexName string, importMode string, normalize string, normalize
 	for doc := range ch {
 		if strings.TrimRight(normalize, "\n") != "" {
 			if doc[normalize] == nil {
-				log.Printf("The property %v does not exist on the documents", normalize)
+				// log.Printf("The property %v does not exist on the documents", normalize)
 				doc[normalizePropertyName] = ""
 			} else {
 				requestBody = map[string]string{
@@ -224,13 +223,13 @@ func importBulk(indexName string, importMode string, normalize string, normalize
 					}
 
 					if resp.StatusCode != 200 {
-						log.Printf("Error normalizing the property %s. Value: %s. Error: %s", normalize, doc[normalize].(string), resp.Status)
+						// log.Printf("Error normalizing the property %s. Value: %s. Error: %s", normalize, doc[normalize].(string), resp.Status)
 						doc["normalized_"+normalize] = doc[normalize].(string)
 					} else {
 						var responseParsed = types.NormalizeResponse{}
 						err = json.NewDecoder(resp.Body).Decode(&responseParsed)
 						if err != nil {
-							log.Printf("Error normalizing the property %s. Error: %s", normalize, err)
+							// log.Printf("Error normalizing the property %s. Error: %s", normalize, err)
 							doc["normalized_"+normalize] = doc[normalize].(string)
 						} else {
 							doc["normalized_"+normalize] = responseParsed.Result
