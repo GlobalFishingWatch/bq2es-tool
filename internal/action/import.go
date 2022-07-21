@@ -55,7 +55,7 @@ func ImportBigQueryToElasticSearch(params types.ImportParams) {
 		recreateIndex(params.IndexName)
 	}
 	var wg sync.WaitGroup
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 20; i++ {
 		wg.Add(1)
 		go func(wg *sync.WaitGroup, ch chan map[string]bigquery.Value) {
 			importBulk(params.IndexName, params.ImportMode, params.Normalize, params.NormalizedPropertyName, params.NormalizeEndpoint, ch)
