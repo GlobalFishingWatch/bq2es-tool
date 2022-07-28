@@ -27,6 +27,8 @@ var bqClient *bigquery.Client
 
 var onErrorAction string
 var temporalIndexName string
+var currentBatch = 0
+var totalItemsImported = 0
 
 func ImportBigQueryToElasticSearch(params types.ImportParams) {
 
@@ -55,10 +57,19 @@ func ImportBigQueryToElasticSearch(params types.ImportParams) {
 		recreateIndex(params.IndexName)
 	}
 	var wg sync.WaitGroup
-	for i := 0; i < 20; i++ {
+	const threads = 15
+	const Batch = 2000
+
+	log.Println("→ ES →→ Importing data to ElasticSearch")
+	log.Printf("→ ES →→ Opening [%s] threads", threads)
+	log.Printf("→ ES →→ Bulk size [%s] documents", Batch)
+	log.Println(strings.Repeat("▁", 65))
+	start := time.Now().UTC()
+	createPreReport(Batch, start)
+	for i := 0; i < threads; i++ {
 		wg.Add(1)
 		go func(wg *sync.WaitGroup, ch chan map[string]bigquery.Value) {
-			importBulk(params.IndexName, params.ImportMode, params.Normalize, params.NormalizedPropertyName, params.NormalizeEndpoint, ch)
+			importBulk(params.IndexName, params.ImportMode, params.Normalize, params.NormalizedPropertyName, params.NormalizeEndpoint, Batch, start, ch)
 			wg.Done()
 		}(&wg, ch)
 	}
@@ -176,31 +187,32 @@ func getColumnNames(schema bigquery.Schema) []string {
 }
 
 // Elastic Search Functions
-func importBulk(indexName string, importMode string, normalize string, normalizePropertyName string, normalizeEndpoint string, ch chan map[string]bigquery.Value) {
-	log.Println("→ ES →→ Importing data to ElasticSearch")
-	const Batch = 1000
+func importBulk(
+	indexName string,
+	importMode string,
+	normalize string,
+	normalizePropertyName string,
+	normalizeEndpoint string,
+	Batch int,
+	start time.Time,
+	ch chan map[string]bigquery.Value,
+) {
 
 	var (
-		buf          bytes.Buffer
-		numItems     int
-		numErrors    int
-		numIndexed   int
-		currentBatch int
-		requestBody  map[string]string
-		jsonStr      []byte
-		err          error
-		req          *http.Request
-		resp         *http.Response
+		buf         bytes.Buffer
+		numItems    int
+		numErrors   int
+		numIndexed  int
+		requestBody map[string]string
+		jsonStr     []byte
+		err         error
+		req         *http.Request
+		resp        *http.Response
 	)
 
 	client := &http.Client{}
 
-	start := time.Now().UTC()
-
-	createPreReport(Batch, start)
-
 	numItems = 0
-	currentBatch = 0
 	for doc := range ch {
 		if strings.TrimRight(normalize, "\n") != "" {
 			if doc[normalize] == nil {
@@ -244,7 +256,8 @@ func importBulk(indexName string, importMode string, normalize string, normalize
 		numItems++
 		if numItems == Batch {
 			currentBatch++
-			errors, items, indexed := executeBulk(currentBatch, indexName, &buf)
+			totalItemsImported += numItems
+			errors, items, indexed := executeBulk(indexName, &buf)
 			numErrors += errors
 			numItems += items
 			numIndexed += indexed
@@ -257,7 +270,8 @@ func importBulk(indexName string, importMode string, normalize string, normalize
 
 	if numItems > 0 {
 		currentBatch++
-		errors, items, indexed := executeBulk(currentBatch, indexName, &buf)
+		totalItemsImported += numItems
+		errors, items, indexed := executeBulk(indexName, &buf)
 		numErrors += errors
 		numItems += items
 		numIndexed += indexed
@@ -269,7 +283,7 @@ func importBulk(indexName string, importMode string, normalize string, normalize
 	createReport(start, numErrors, numIndexed)
 }
 
-func executeBulk(currentBatch int, indexName string, buf *bytes.Buffer) (int, int, int) {
+func executeBulk(indexName string, buf *bytes.Buffer) (int, int, int) {
 	var (
 		raw        map[string]interface{}
 		blk        *types.BulkResponse
@@ -277,11 +291,12 @@ func executeBulk(currentBatch int, indexName string, buf *bytes.Buffer) (int, in
 		numItems   int
 		numIndexed int
 	)
-
 	log.Printf("Batch [%d]", currentBatch)
+	log.Printf("Total documents imported [%d]", totalItemsImported)
 
 	res, err := esClient.Bulk(bytes.NewReader(buf.Bytes()), esClient.Bulk.WithIndex(indexName))
 	if err != nil {
+		log.Printf("Error importing Bulk")
 		executeOnErrorAction(indexName)
 		log.Fatalf("Failure indexing Batch %d: %s", currentBatch, err)
 	}
@@ -289,6 +304,7 @@ func executeBulk(currentBatch int, indexName string, buf *bytes.Buffer) (int, in
 	if res.IsError() {
 		numErrors += numItems
 		executeOnErrorAction(indexName)
+		log.Printf("Response error: [%s]", res.Body)
 		if err := json.NewDecoder(res.Body).Decode(&raw); err != nil {
 			log.Fatalf("Failure to to parse response body: %s", err)
 		}
